@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { checkConnection, dbLoad, dbSave } from './lib/db'
+import {
+  checkConnection,
+  loadDebts,
+  saveDebts,
+  loadSettings,
+  saveSettings,
+  deleteDebtFromDB,
+  dbLoad,
+  dbSave,
+} from './lib/db'
 import {
   checkAndSendEmailNotifications,
   clearSentForDate,
@@ -1155,7 +1164,21 @@ function App() {
       const online = await checkConnection()
       setDbStatus(online ? online : 'offline')
 
-      if (online) {
+      if (online === 'supabase') {
+        // Phase 2: read from normalized tables (auto-migrates from kv_store on first use)
+        const [remoteDebts, remoteSettings] = await Promise.all([
+          loadDebts(),
+          loadSettings(),
+        ])
+        if (remoteDebts || remoteSettings) {
+          applyParsed({
+            debts: remoteDebts,
+            settings: remoteSettings,
+            seedVersion: SEED_VERSION, // skip seed merge — data is already authoritative
+          })
+          return
+        }
+      } else if (online === 'pocketbase') {
         const [remoteDebts, remoteSettings] = await Promise.all([
           dbLoad('debts', online),
           dbLoad('settings', online),
@@ -1164,7 +1187,7 @@ function App() {
           applyParsed({
             debts: remoteDebts,
             settings: remoteSettings,
-            seedVersion: SEED_VERSION - 1,  // Force merge with seed data to get new fields
+            seedVersion: SEED_VERSION - 1,
           })
           return
         }
@@ -1204,13 +1227,22 @@ function App() {
       clearTimeout(saveTimer.current)
     }
     saveTimer.current = setTimeout(async () => {
-      if (dbStatus === 'offline') {
-        return
+      if (dbStatus === 'offline') return
+      try {
+        if (dbStatus === 'supabase') {
+          await Promise.all([
+            saveDebts(debts),
+            saveSettings(settings),
+          ])
+        } else if (dbStatus === 'pocketbase') {
+          await Promise.all([
+            dbSave('debts', debts, dbStatus),
+            dbSave('settings', settings, dbStatus),
+          ])
+        }
+      } catch (err) {
+        console.warn('Auto-save failed:', err.message)
       }
-      await Promise.all([
-        dbSave('debts', debts, dbStatus),
-        dbSave('settings', settings, dbStatus),
-      ])
     }, 600)
   }, [debts, settings, dbStatus])
 
@@ -1303,6 +1335,7 @@ function App() {
 
   const deleteDebt = (id) => {
     setDebts((prev) => prev.filter((d) => d.id !== id))
+    if (dbStatus === 'supabase') deleteDebtFromDB(id)
   }
 
   // ── Email Notifications ──────────────────────────────────────────────────

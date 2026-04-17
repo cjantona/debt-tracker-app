@@ -3,23 +3,33 @@
 
 create extension if not exists pgcrypto;
 
+-- debts: uses text PK to accommodate app-defined IDs (e.g. 'sloan', 'debt-1234567890')
 create table if not exists public.debts (
-  id uuid primary key default gen_random_uuid(),
+  id text primary key,
   user_id uuid not null references auth.users(id) on delete cascade,
   name text not null,
+  bank text,
+  total_balance numeric(12,2) not null default 0,
   balance numeric(12,2) not null default 0,
   monthly_payment numeric(12,2) not null default 0,
   interest_rate numeric(6,4) not null default 0,
   months_remaining integer not null default 0,
-  due_day integer not null check (due_day between 1 and 31),
+  due_day integer check (due_day between 1 and 31),
   status text not null default 'ongoing' check (status in ('ongoing','paid','heavy')),
+  min_due numeric(12,2) default 0,
+  finance_charge numeric(12,2) default 0,
+  min_due_rate numeric(6,4) default 0.03,
+  fixed_installment boolean default false,
+  creditor_contacts jsonb,
+  actual_paid numeric(12,2) default 0,
+  payment_history jsonb default '[]',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 create table if not exists public.payments (
   id uuid primary key default gen_random_uuid(),
-  debt_id uuid not null references public.debts(id) on delete cascade,
+  debt_id text not null references public.debts(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
   amount numeric(12,2) not null check (amount > 0),
   date date not null,
@@ -30,10 +40,13 @@ create table if not exists public.payments (
 create table if not exists public.settings (
   user_id uuid primary key references auth.users(id) on delete cascade,
   bi_monthly_salary numeric(12,2) not null default 0,
+  monthly_budget_override numeric(12,2),
+  manual_extra numeric(12,2) default 0,
   notification_enabled boolean not null default false,
   email text,
   strategy text not null default 'cashflow' check (strategy in ('cashflow','snowball','interest')),
   interest_boost boolean not null default true,
+  projected_income jsonb default '[]',
   updated_at timestamptz not null default now()
 );
 
