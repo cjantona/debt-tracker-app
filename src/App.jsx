@@ -11,7 +11,7 @@ import {
 } from 'recharts'
 
 const STORAGE_KEY = 'debt-tracker:v2'
-const SEED_VERSION = 6 // bump this whenever seedDebts changes
+const SEED_VERSION = 7 // bump this whenever seedDebts changes
 
 const currency = new Intl.NumberFormat('en-PH', {
   style: 'currency',
@@ -148,6 +148,22 @@ const seedDebts = [
     paymentHistory: [],
     dueDate: 5,
     creditorContacts: { phone: '1800-665-3333', email: 'cards@bpi.com.ph', website: 'bpi.com.ph' },
+  },
+  {
+    id: 'bdo-amex',
+    name: 'BDO AMEX',
+    bank: 'BDO',
+    totalBalance: 123000,
+    remainingBalance: 123000,
+    monthlyPayment: 4000,
+    monthsRemaining: 31,
+    interestRate: 0.025,
+    minDue: 0,
+    financeCharge: 0,
+    minDueRate: 0.03,
+    paymentHistory: [],
+    dueDate: 26,
+    creditorContacts: { phone: '1800-188-1919', email: 'cards@bdo.com.ph', website: 'bdo.com.ph' },
   },
 ]
 
@@ -382,6 +398,7 @@ function MinPaymentPlanner({ debts, onUpdateDebt, onMarkPayment }) {
                 <th className="pb-2 text-right">Min Due %</th>
                 <th className="pb-2 text-right bg-violet-500/10 rounded-tl">Proj Min Due</th>
                 <th className="pb-2 text-right bg-violet-500/10 rounded-tr">Proj Rounded</th>
+                               <th className="pb-2 text-right">Actual Paid</th>
                 <th className="pb-2"></th>
               </tr>
             </thead>
@@ -461,6 +478,12 @@ function MinPaymentPlanner({ debts, onUpdateDebt, onMarkPayment }) {
                         {formatCurrency(projRounded)}
                       </span>
                     )}
+                  </td>
+                  <td className="py-2 pr-2 w-32">
+                    <NumInput
+                      value={debt.actualPaid || 0}
+                      onChange={(val) => onUpdateDebt(debt.id, 'actualPaid', val)}
+                    />
                   </td>
                   <td className="py-2 pl-2">
                     <button
