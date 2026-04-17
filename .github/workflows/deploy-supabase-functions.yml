@@ -16,6 +16,7 @@ jobs:
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN || secrets.SUPABASE_PAT || secrets.SUPABASE_TOKEN }}
       SUPABASE_PROJECT_ID: comdmxcwjxlwnbhhypbq
+      SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
       EMAILJS_SERVICE_ID: ${{ secrets.EMAILJS_SERVICE_ID || secrets.VITE_EMAILJS_SERVICE_ID }}
       EMAILJS_TEMPLATE_ID: ${{ secrets.EMAILJS_TEMPLATE_ID || secrets.VITE_EMAILJS_TEMPLATE_ID }}
       EMAILJS_PUBLIC_KEY: ${{ secrets.EMAILJS_PUBLIC_KEY || secrets.VITE_EMAILJS_PUBLIC_KEY }}
@@ -36,17 +37,22 @@ jobs:
           test -n "$SUPABASE_ACCESS_TOKEN" || (echo "Missing SUPABASE_ACCESS_TOKEN" && exit 1)
 
       - name: Push function secrets
-        if: ${{ env.EMAILJS_SERVICE_ID != '' && env.EMAILJS_TEMPLATE_ID != '' && env.EMAILJS_PUBLIC_KEY != '' }}
+        if: ${{ env.SUPABASE_ANON_KEY != '' || (env.EMAILJS_SERVICE_ID != '' && env.EMAILJS_TEMPLATE_ID != '' && env.EMAILJS_PUBLIC_KEY != '') }}
         run: |
           npx supabase@latest secrets set \
+            SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
             EMAILJS_SERVICE_ID="$EMAILJS_SERVICE_ID" \
             EMAILJS_TEMPLATE_ID="$EMAILJS_TEMPLATE_ID" \
             EMAILJS_PUBLIC_KEY="$EMAILJS_PUBLIC_KEY" \
             --project-ref "$SUPABASE_PROJECT_ID"
 
       - name: Skip function secret sync
-        if: ${{ !(env.EMAILJS_SERVICE_ID != '' && env.EMAILJS_TEMPLATE_ID != '' && env.EMAILJS_PUBLIC_KEY != '') }}
-        run: echo "EmailJS secrets not present in GitHub Secrets; skipping secret sync and using existing Supabase secrets."
+        if: ${{ !(env.SUPABASE_ANON_KEY != '' || (env.EMAILJS_SERVICE_ID != '' && env.EMAILJS_TEMPLATE_ID != '' && env.EMAILJS_PUBLIC_KEY != '')) }}
+        run: echo "No function secrets found in GitHub Secrets; skipping secret sync and using existing Supabase secrets."
 
-      - name: Deploy email-reminders function
-        run: npx supabase@latest functions deploy email-reminders --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
+      - name: Deploy edge functions
+        run: |
+          npx supabase@latest functions deploy email-reminders --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
+          npx supabase@latest functions deploy send-notifications --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
+          npx supabase@latest functions deploy verify-email --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
+          npx supabase@latest functions deploy recompute-plan --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt

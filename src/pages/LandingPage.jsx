@@ -61,20 +61,20 @@ export default function LandingPage() {
       </nav>
 
       {/* ── Hero ─────────────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-indigo-600 via-indigo-700 to-slate-900 text-white">
+      <section className="relative overflow-hidden bg-gradient-to-br from-purple-600 via-blue-600 to-slate-900 text-white">
         <div className="absolute inset-0 opacity-10"
           style={{ backgroundImage: 'radial-gradient(circle at 20% 50%, white 1px, transparent 1px), radial-gradient(circle at 80% 20%, white 1px, transparent 1px)', backgroundSize: '60px 60px' }}
         />
-        <div className="relative max-w-5xl mx-auto px-6 py-28 text-center">
+        <div className="relative max-w-5xl mx-auto px-6 py-28 text-center animate-[fadein_.6s_ease-out]">
           <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 rounded-full px-4 py-1.5 text-sm mb-8">
             <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
             Free • Secure • No credit card required
           </div>
           <h1 className="text-5xl sm:text-6xl font-extrabold tracking-tight mb-6 leading-tight">
             Take control of<br />
-            <span className="text-indigo-300">your debt journey</span>
+            <span className="text-blue-200">your debt journey</span>
           </h1>
-          <p className="text-xl text-indigo-200 mb-10 max-w-2xl mx-auto">
+          <p className="text-xl text-blue-100 mb-10 max-w-2xl mx-auto">
             A personal financial control panel built for Filipinos. Track, plan, and eliminate
             debt with smart strategies and automated reminders.
           </p>
@@ -112,7 +112,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── Features ─────────────────────────────────────────────────── */}
-      <section className="py-24 px-6">
+      <section className="py-24 px-6 animate-[fadein_.7s_ease-out]">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold text-slate-800 mb-4">
@@ -126,7 +126,7 @@ export default function LandingPage() {
             {FEATURES.map((f) => (
               <div
                 key={f.title}
-                className="bg-white rounded-2xl p-6 border border-slate-200 hover:border-indigo-300 hover:shadow-md transition-all"
+                className="bg-white rounded-2xl p-6 border border-slate-200 hover:border-indigo-300 hover:shadow-md hover:scale-[1.02] transition-all duration-300"
               >
                 <div className="text-3xl mb-3">{f.icon}</div>
                 <h3 className="font-bold text-slate-800 mb-2">{f.title}</h3>
@@ -153,6 +153,8 @@ export default function LandingPage() {
       <footer className="bg-slate-900 text-slate-500 text-sm text-center py-8">
         <p>© {new Date().getFullYear()} DebtTracker · Built for personal use</p>
       </footer>
+
+      <style>{`@keyframes fadein { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }`}</style>
     </div>
   )
 }

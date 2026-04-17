@@ -3,20 +3,36 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function SignupPage() {
-  const { signUp } = useAuth()
+  const { signUp, supabaseEnabled } = useAuth()
   const navigate   = useNavigate()
 
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm]   = useState('')
   const [error, setError]       = useState('')
+  const [success, setSuccess]   = useState('')
   const [loading, setLoading]   = useState(false)
+
+  const emailValid = /^\S+@\S+\.\S+$/.test(email)
+  const passwordValid = password.length >= 8
+  const passwordsMatch = confirm.length === 0 || password === confirm
 
   async function handleSubmit(e) {
     e.preventDefault()
     setError('')
+    setSuccess('')
 
-    if (password.length < 8) {
+    if (!supabaseEnabled) {
+      setError('Authentication is unavailable in this environment.')
+      return
+    }
+
+    if (!emailValid) {
+      setError('Enter a valid email address.')
+      return
+    }
+
+    if (!passwordValid) {
       setError('Password must be at least 8 characters.')
       return
     }
@@ -34,6 +50,7 @@ export default function SignupPage() {
       return
     }
 
+    setSuccess('Account created. Check your inbox for verification.')
     navigate('/verify')
   }
 
@@ -60,6 +77,11 @@ export default function SignupPage() {
                 {error}
               </div>
             )}
+            {success && (
+              <div className="mb-5 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-700">
+                {success}
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-5">
               <div>
@@ -72,6 +94,9 @@ export default function SignupPage() {
                   className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-slate-800 text-sm"
                   placeholder="you@example.com"
                 />
+                {email && !emailValid && (
+                  <p className="mt-1 text-xs text-red-600">Enter a valid email format.</p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
@@ -83,6 +108,9 @@ export default function SignupPage() {
                   className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-slate-800 text-sm"
                   placeholder="Min. 8 characters"
                 />
+                {password && !passwordValid && (
+                  <p className="mt-1 text-xs text-red-600">Use at least 8 characters.</p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -96,6 +124,9 @@ export default function SignupPage() {
                   className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-slate-800 text-sm"
                   placeholder="••••••••"
                 />
+                {!passwordsMatch && (
+                  <p className="mt-1 text-xs text-red-600">Passwords do not match.</p>
+                )}
               </div>
               <button
                 type="submit"

@@ -22,22 +22,23 @@ export default function AppRouter() {
     <Routes>
       {/* Public */}
       <Route path="/" element={
-        user && isVerified ? <Navigate to="/dashboard" replace /> : <LandingPage />
+        user && isVerified ? <Navigate to="/app" replace /> : <LandingPage />
       } />
       <Route path="/login" element={
-        user && isVerified ? <Navigate to="/dashboard" replace /> : <LoginPage />
+        user && isVerified ? <Navigate to="/app" replace /> : <LoginPage />
       } />
       <Route path="/signup" element={
-        user && isVerified ? <Navigate to="/dashboard" replace /> : <SignupPage />
+        user && isVerified ? <Navigate to="/app" replace /> : <SignupPage />
       } />
       <Route path="/verify" element={<VerifyEmailPage />} />
 
       {/* Protected */}
-      <Route path="/dashboard" element={
+      <Route path="/app" element={
         <AuthGuard>
           <Dashboard />
         </AuthGuard>
       } />
+      <Route path="/dashboard" element={<Navigate to="/app" replace />} />
 
       {/* Catch-all */}
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -1050,8 +1050,27 @@ function App() {
   const [consolidationTerm, setConsolidationTerm] = useState(60)
   const [selectedPaymentStrategy, setSelectedPaymentStrategy] = useState('snowball')
   const [dbStatus, setDbStatus] = useState('checking')
+  const [showProfileMenu, setShowProfileMenu] = useState(false)
   const saveTimer = useRef(null)
   const loaded = useRef(false)
+  const profileMenuRef = useRef(null)
+
+  useEffect(() => {
+    function handleOutsideClick(event) {
+      if (!profileMenuRef.current) return
+      if (!profileMenuRef.current.contains(event.target)) {
+        setShowProfileMenu(false)
+      }
+    }
+
+    if (showProfileMenu) {
+      document.addEventListener('mousedown', handleOutsideClick)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick)
+    }
+  }, [showProfileMenu])
 
   const normalizeDebts = useCallback((value) => {
     const list = Array.isArray(value) ? value : Array.isArray(value?.debts) ? value.debts : null
@@ -1514,18 +1533,63 @@ function App() {
           >
             📧 {settings.emailNotifEnabled ? 'Email On' : 'Email Off'}
           </button>
-          {/* User + logout */}
+          {/* User profile dropdown */}
           {user && (
-            <span className="flex items-center gap-2 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-xs text-slate-300">
-              <span className="max-w-[120px] truncate opacity-70">{user.email}</span>
+            <div className="relative" ref={profileMenuRef}>
               <button
-                onClick={signOut}
-                className="text-rose-400 hover:text-rose-300 font-medium transition-colors"
-                title="Sign out"
+                onClick={() => setShowProfileMenu((prev) => !prev)}
+                className="flex items-center gap-2 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-xs text-slate-200 hover:bg-slate-700"
               >
-                Sign out
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-indigo-500/20 text-indigo-300 font-semibold">
+                  {(user.email || '?').slice(0, 1).toUpperCase()}
+                </span>
+                <span className="max-w-[120px] truncate opacity-80">{user.email}</span>
+                <span className="opacity-60">▾</span>
               </button>
-            </span>
+
+              {showProfileMenu && (
+                <div className="absolute right-0 mt-2 w-72 rounded-xl border border-slate-700 bg-slate-900 p-3 shadow-2xl z-20">
+                  <div className="mb-2 border-b border-slate-700 pb-2">
+                    <p className="text-[11px] uppercase tracking-wider text-slate-400">Signed in as</p>
+                    <p className="truncate text-sm font-medium text-slate-100">{user.email}</p>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setEmailDraft(settings.userEmail || user.email || '')
+                      setShowEmailSetup(true)
+                      setShowProfileMenu(false)
+                    }}
+                    className="mb-2 w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-left text-xs text-slate-200 hover:bg-slate-700"
+                  >
+                    Configure Email Notifications
+                  </button>
+
+                  <label className="mb-3 flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs text-slate-200">
+                    <span>Email reminders</span>
+                    <input
+                      type="checkbox"
+                      checked={settings.emailNotifEnabled}
+                      onChange={(event) =>
+                        setSettings((prev) => ({ ...prev, emailNotifEnabled: event.target.checked }))
+                      }
+                      className="h-4 w-4 accent-violet-400"
+                    />
+                  </label>
+
+                  <button
+                    onClick={async () => {
+                      setShowProfileMenu(false)
+                      await signOut()
+                    }}
+                    className="w-full rounded-lg border border-rose-500/60 bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-300 hover:bg-rose-500/20"
+                    title="Sign out"
+                  >
+                    Sign out
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </header>
