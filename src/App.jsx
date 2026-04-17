@@ -1004,7 +1004,7 @@ function App() {
             debts: remoteDebts,
             settings: remoteSettings,
             chatHistory: remoteChatHistory,
-            seedVersion: SEED_VERSION,
+            seedVersion: SEED_VERSION - 1,  // Force merge with seed data to get new fields
           })
           return
         }
