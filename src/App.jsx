@@ -48,7 +48,7 @@ const seedDebts = [
     fixedInstallment: true,
     minDueRate: 0.03,
     paymentHistory: [],
-    dueDate: 1,
+    dueDate: 16,
     creditorContacts: { phone: '1800-SHOPEE', email: 'support@shopee.ph', website: 'shopee.ph' },
   },
   {
@@ -64,7 +64,7 @@ const seedDebts = [
     financeCharge: 0,
     minDueRate: 0.03,
     paymentHistory: [],
-    dueDate: 10,
+    dueDate: 4,
     creditorContacts: { phone: '1800-888-8822', email: 'cc@rcbc.com', website: 'rcbc.com' },
   },
   {
@@ -80,7 +80,7 @@ const seedDebts = [
     financeCharge: 396.08,
     minDueRate: 0.03,
     paymentHistory: [],
-    dueDate: 18,
+    dueDate: 16,
     creditorContacts: { phone: '1800-188-1919', email: 'cards@bdo.com.ph', website: 'bdo.com.ph' },
   },
   {
@@ -97,7 +97,7 @@ const seedDebts = [
     fixedInstallment: true,
     minDueRate: 0.05,
     paymentHistory: [],
-    dueDate: 5,
+    dueDate: 16,
     creditorContacts: { phone: '2882-1111', email: 'support@gcash.com', website: 'gcash.com' },
   },
   {
@@ -114,7 +114,7 @@ const seedDebts = [
     fixedInstallment: true,
     minDueRate: 0.05,
     paymentHistory: [],
-    dueDate: 10,
+    dueDate: 16,
     creditorContacts: { phone: '2882-1111', email: 'support@gcash.com', website: 'gcash.com' },
   },
   {
@@ -146,7 +146,7 @@ const seedDebts = [
     financeCharge: 0,
     minDueRate: 0.03,
     paymentHistory: [],
-    dueDate: 20,
+    dueDate: 5,
     creditorContacts: { phone: '1800-665-3333', email: 'cards@bpi.com.ph', website: 'bpi.com.ph' },
   },
 ]
