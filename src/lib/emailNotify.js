@@ -1,4 +1,5 @@
 import emailjs from '@emailjs/browser'
+import { rankDebts, groupFingerprint } from './priority.js'
 
 // ── Supabase state sync ───────────────────────────────────────────────────────
 const SB_URL = import.meta.env.VITE_SUPABASE_URL || ''
@@ -148,8 +149,11 @@ export async function checkAndSendEmailNotifications(debts, userEmail, priorityN
     for (const win of WINDOWS) {
       if (daysLeft !== win.days) continue
 
-      const key = `${dateStr}-${win.label}`
-      if (state.sent[key]) continue // already sent for this window
+      // Fingerprint = dateStr + window + sorted debt IDs/amounts
+      // Changes if any debt amount changes → triggers a fresh notification
+      const fingerprint = groupFingerprint(group.debts, `${dateStr}-${win.label}`)
+      const prev = state.sent[`${dateStr}-${win.label}`]
+      if (prev?.fingerprint === fingerprint) continue // identical group, already sent
 
       // Build grouped debt list (plain text + HTML)
       const totalDue = group.debts.reduce(
@@ -175,13 +179,14 @@ export async function checkAndSendEmailNotifications(debts, userEmail, priorityN
         total_due:     formatPHP(totalDue),
         debt_list:     debtListText,
         debt_list_html: debtListHtml,
-        priority_debt: priorityName || group.debts[0]?.name || '',
+        priority_debt: priorityName || rankDebts(group.debts)[0]?.name || group.debts[0]?.name || '',
       }
 
       try {
         await emailjs.send(SERVICE_ID, TEMPLATE_ID, templateParams, PUBLIC_KEY)
-        state.sent[key] = {
+        state.sent[`${dateStr}-${win.label}`] = {
           sentAt: new Date().toISOString(),
+          fingerprint,
           debtIds: group.debts.map((d) => d.id),
         }
         state.lastEmailSent = new Date().toISOString()

@@ -5,6 +5,7 @@ import {
   isEmailJsConfigured,
   loadEmailNotifState,
 } from './lib/emailNotify'
+import { scoreDebt, rankDebts } from './lib/priority.js'
 import {
   Area,
   AreaChart,
@@ -198,21 +199,6 @@ function getStatus(debt) {
     return 'heavy'
   }
   return 'ongoing'
-}
-
-function scoreDebt(debt, strategy, income, interestBoost) {
-  if (debt.remainingBalance <= 0) {
-    return -1
-  }
-  if (strategy === 'snowball') {
-    return 100000 - debt.remainingBalance
-  }
-  if (strategy === 'interest') {
-    return debt.interestRate * 1000 + debt.monthlyPayment
-  }
-  const burden = debt.monthlyPayment / Math.max(1, income)
-  const interestScore = interestBoost ? debt.interestRate * 100 : 0
-  return debt.monthlyPayment * 3 + debt.monthsRemaining * 9 + burden * 500 + interestScore
 }
 
 function buildBurnDown(debts, strategy, totalMonthlyBudget, income, interestBoost) {
@@ -1227,15 +1213,10 @@ function App() {
   const safeRuleBreached = remainingDisposable < totalIncome * 0.5
   const overAllocated = requestedExtra > safeExtraAllowed
 
-  const rankedDebts = useMemo(() => {
-    return [...debts]
-      .filter((debt) => debt.remainingBalance > 0)
-      .sort(
-        (a, b) =>
-          scoreDebt(b, settings.strategy, totalIncome, settings.interestBoost) -
-          scoreDebt(a, settings.strategy, totalIncome, settings.interestBoost),
-      )
-  }, [debts, settings.strategy, totalIncome, settings.interestBoost])
+  const rankedDebts = useMemo(
+    () => rankDebts(debts, settings, totalIncome),
+    [debts, settings, totalIncome],
+  )
 
   const topTarget = rankedDebts[0]
 
