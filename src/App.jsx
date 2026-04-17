@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { checkConnection, dbLoad, dbSave } from './lib/db'
 import {
   checkAndSendEmailNotifications,
+  clearSentForDate,
   isEmailJsConfigured,
   loadEmailNotifState,
 } from './lib/emailNotify'
@@ -1254,12 +1255,24 @@ function App() {
   ]
 
   const updateDebtField = (id, field, value) => {
+    if (field === 'dueDate') {
+      const prev = debts.find((d) => d.id === id)
+      if (prev?.dueDate && prev.dueDate !== value) {
+        // Old due date's notifications are stale — allow resend for new date
+        const oldNext = new Date(new Date().getFullYear(), new Date().getMonth(), prev.dueDate)
+        clearSentForDate(oldNext.toISOString().slice(0, 10))
+      }
+    }
     setDebts((prev) => prev.map((d) => (d.id === id ? { ...d, [field]: value } : d)))
   }
 
   const saveDebt = (draft) => {
     setDebts((prev) => {
       const exists = prev.find((d) => d.id === draft.id)
+      if (exists && exists.dueDate !== draft.dueDate && exists.dueDate) {
+        const oldNext = new Date(new Date().getFullYear(), new Date().getMonth(), exists.dueDate)
+        clearSentForDate(oldNext.toISOString().slice(0, 10))
+      }
       if (exists) {
         return prev.map((d) => (d.id === draft.id ? draft : d))
       }
