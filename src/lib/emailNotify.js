@@ -1,5 +1,38 @@
 import emailjs from '@emailjs/browser'
 
+// ── Supabase state sync ───────────────────────────────────────────────────────
+const SB_URL = import.meta.env.VITE_SUPABASE_URL || ''
+const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+
+async function sbGetNotifState() {
+  if (!SB_URL || !SB_KEY) return null
+  try {
+    const res = await fetch(
+      `${SB_URL}/rest/v1/kv_store?key=eq.email-notif-state&select=data&limit=1`,
+      { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } },
+    )
+    if (!res.ok) return null
+    const rows = await res.json()
+    return rows[0]?.data ?? null
+  } catch { return null }
+}
+
+async function sbSetNotifState(data) {
+  if (!SB_URL || !SB_KEY) return
+  try {
+    await fetch(`${SB_URL}/rest/v1/kv_store`, {
+      method: 'POST',
+      headers: {
+        apikey: SB_KEY,
+        Authorization: `Bearer ${SB_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify({ key: 'email-notif-state', data }),
+    })
+  } catch { /* ignore */ }
+}
+
 // ── Config ────────────────────────────────────────────────────────────────────
 // Set these in .env.local (and as GitHub Actions secrets for deployment)
 const SERVICE_ID  = import.meta.env.VITE_EMAILJS_SERVICE_ID  || ''
@@ -50,6 +83,21 @@ function saveEmailNotifState(state) {
   }
 }
 
+async function loadEmailNotifStateRemote() {
+  const remote = await sbGetNotifState()
+  if (remote) {
+    // Merge remote into localStorage so offline reads stay fresh
+    try { localStorage.setItem(NOTIF_STORAGE_KEY, JSON.stringify(remote)) } catch { /* ignore */ }
+    return remote
+  }
+  return loadEmailNotifState()
+}
+
+async function saveEmailNotifStateRemote(state) {
+  saveEmailNotifState(state)   // always write localStorage immediately
+  await sbSetNotifState(state) // best-effort sync to Supabase
+}
+
 // Reset sent state when due date changes (so user gets updated notification)
 export function clearSentForDate(dateStr) {
   const state = loadEmailNotifState()
@@ -91,7 +139,7 @@ export async function checkAndSendEmailNotifications(debts, userEmail, priorityN
     byDueDate[dateStr].debts.push(debt)
   }
 
-  const state = loadEmailNotifState()
+  const state = await loadEmailNotifStateRemote()
   const results = []
 
   for (const [dateStr, group] of Object.entries(byDueDate)) {
@@ -137,7 +185,7 @@ export async function checkAndSendEmailNotifications(debts, userEmail, priorityN
           debtIds: group.debts.map((d) => d.id),
         }
         state.lastEmailSent = new Date().toISOString()
-        saveEmailNotifState(state)
+        await saveEmailNotifStateRemote(state)
         results.push({ dateStr, window: win.label, daysLeft: win.days, success: true })
       } catch (err) {
         results.push({ dateStr, window: win.label, success: false, error: String(err) })
