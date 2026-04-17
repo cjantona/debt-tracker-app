@@ -1,0 +1,39 @@
+name: Deploy Supabase Functions
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'supabase/functions/**'
+      - '.github/workflows/deploy-supabase-functions.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy-functions:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_ID: comdmxcwjxlwnbhhypbq
+      EMAILJS_SERVICE_ID: ${{ secrets.VITE_EMAILJS_SERVICE_ID }}
+      EMAILJS_TEMPLATE_ID: ${{ secrets.VITE_EMAILJS_TEMPLATE_ID }}
+      EMAILJS_PUBLIC_KEY: ${{ secrets.VITE_EMAILJS_PUBLIC_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Push function secrets
+        run: |
+          supabase secrets set \
+            EMAILJS_SERVICE_ID="$EMAILJS_SERVICE_ID" \
+            EMAILJS_TEMPLATE_ID="$EMAILJS_TEMPLATE_ID" \
+            EMAILJS_PUBLIC_KEY="$EMAILJS_PUBLIC_KEY" \
+            --project-ref "$SUPABASE_PROJECT_ID"
+
+      - name: Deploy email-reminders function
+        run: supabase functions deploy email-reminders --project-ref "$SUPABASE_PROJECT_ID"
