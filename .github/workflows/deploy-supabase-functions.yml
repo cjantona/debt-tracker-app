@@ -22,25 +22,33 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Supabase CLI
-        uses: supabase/setup-cli@v1
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
-          version: latest
+          node-version: 20
+
+      - name: Install Supabase CLI
+        run: npm i -g supabase
+
+      - name: Verify Supabase CLI
+        run: supabase --version
 
       - name: Validate required secrets
         run: |
           test -n "$SUPABASE_ACCESS_TOKEN" || (echo "Missing SUPABASE_ACCESS_TOKEN" && exit 1)
-          test -n "$EMAILJS_SERVICE_ID" || (echo "Missing EMAILJS_SERVICE_ID (or VITE_EMAILJS_SERVICE_ID)" && exit 1)
-          test -n "$EMAILJS_TEMPLATE_ID" || (echo "Missing EMAILJS_TEMPLATE_ID (or VITE_EMAILJS_TEMPLATE_ID)" && exit 1)
-          test -n "$EMAILJS_PUBLIC_KEY" || (echo "Missing EMAILJS_PUBLIC_KEY (or VITE_EMAILJS_PUBLIC_KEY)" && exit 1)
 
       - name: Push function secrets
+        if: ${{ env.EMAILJS_SERVICE_ID != '' && env.EMAILJS_TEMPLATE_ID != '' && env.EMAILJS_PUBLIC_KEY != '' }}
         run: |
           supabase secrets set \
             EMAILJS_SERVICE_ID="$EMAILJS_SERVICE_ID" \
             EMAILJS_TEMPLATE_ID="$EMAILJS_TEMPLATE_ID" \
             EMAILJS_PUBLIC_KEY="$EMAILJS_PUBLIC_KEY" \
             --project-ref "$SUPABASE_PROJECT_ID"
+
+      - name: Skip function secret sync
+        if: ${{ !(env.EMAILJS_SERVICE_ID != '' && env.EMAILJS_TEMPLATE_ID != '' && env.EMAILJS_PUBLIC_KEY != '') }}
+        run: echo "EmailJS secrets not present in GitHub Secrets; skipping secret sync and using existing Supabase secrets."
 
       - name: Deploy email-reminders function
         run: supabase functions deploy email-reminders --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
