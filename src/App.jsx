@@ -48,6 +48,8 @@ const seedDebts = [
     fixedInstallment: true,
     minDueRate: 0.03,
     paymentHistory: [],
+    dueDate: 1,
+    creditorContacts: { phone: '1800-SHOPEE', email: 'support@shopee.ph', website: 'shopee.ph' },
   },
   {
     id: 'rcbc-cc',
@@ -62,6 +64,8 @@ const seedDebts = [
     financeCharge: 0,
     minDueRate: 0.03,
     paymentHistory: [],
+    dueDate: 10,
+    creditorContacts: { phone: '1800-888-8822', email: 'cc@rcbc.com', website: 'rcbc.com' },
   },
   {
     id: 'bpi-mastercard',
@@ -76,6 +80,8 @@ const seedDebts = [
     financeCharge: 396.08,
     minDueRate: 0.03,
     paymentHistory: [],
+    dueDate: 18,
+    creditorContacts: { phone: '1800-188-1919', email: 'cards@bdo.com.ph', website: 'bdo.com.ph' },
   },
   {
     id: 'gloan-a',
@@ -91,6 +97,8 @@ const seedDebts = [
     fixedInstallment: true,
     minDueRate: 0.05,
     paymentHistory: [],
+    dueDate: 5,
+    creditorContacts: { phone: '2882-1111', email: 'support@gcash.com', website: 'gcash.com' },
   },
   {
     id: 'gloan-b',
@@ -106,6 +114,8 @@ const seedDebts = [
     fixedInstallment: true,
     minDueRate: 0.05,
     paymentHistory: [],
+    dueDate: 10,
+    creditorContacts: { phone: '2882-1111', email: 'support@gcash.com', website: 'gcash.com' },
   },
   {
     id: 'bdo-conv',
@@ -120,6 +130,8 @@ const seedDebts = [
     financeCharge: 0,
     minDueRate: 0.03,
     paymentHistory: [],
+    dueDate: 15,
+    creditorContacts: { phone: '1800-188-1919', email: 'cards@bdo.com.ph', website: 'bdo.com.ph' },
   },
   {
     id: 'bdo-plat',
@@ -134,6 +146,8 @@ const seedDebts = [
     financeCharge: 0,
     minDueRate: 0.03,
     paymentHistory: [],
+    dueDate: 20,
+    creditorContacts: { phone: '1800-665-3333', email: 'cards@bpi.com.ph', website: 'bpi.com.ph' },
   },
 ]
 
@@ -143,6 +157,10 @@ const seedSettings = {
   manualExtra: 5000,
   strategy: 'cashflow',
   interestBoost: true,
+  projectedIncome: [
+    { month: 5, year: 2026, amount: 50000 },
+    { month: 12, year: 2026, amount: 75000 },
+  ],
 }
 
 function formatCurrency(value) {
@@ -667,6 +685,234 @@ function StatusBadge({ status }) {
   )
 }
 
+// Feature component: Payment Reminders Calendar
+function PaymentRemindersCalendar({ debts }) {
+  const now = new Date()
+  const currentDay = now.getDate()
+  const daysUntil = (dueDate) => {
+    const days = dueDate - currentDay
+    return days < 0 ? days + 30 : days === 0 ? 0 : days
+  }
+  const getDueStatus = (daysIf) => {
+    if (daysIf < 0 || daysIf > 30) return 'overdue'
+    if (daysIf === 0) return 'today'
+    if (daysIf <= 7) return 'soon'
+    if (daysIf <= 15) return 'week'
+    return 'month'
+  }
+  const sorted = [...debts].sort((a, b) => (a.dueDate || 30) - (b.dueDate || 30))
+  return (
+    <div className="rounded-2xl border border-slate-700/60 bg-slate-800/70 p-4 shadow-xl shadow-slate-950/30">
+      <h2 className="text-lg font-semibold text-slate-100">Payment Due Dates</h2>
+      <div className="mt-3 grid gap-2">
+        {sorted.map((debt) => {
+          const days = daysUntil(debt.dueDate || 30)
+          const status = getDueStatus(days)
+          const statusColor = { today: 'text-rose-200 border-rose-400', soon: 'text-amber-200 border-amber-400', week: 'text-cyan-200 border-cyan-400', month: 'text-emerald-200 border-emerald-400', overdue: 'text-rose-300 border-rose-500' }[status]
+          const icon = { today: '🔴', soon: '🟠', week: '🔵', month: '🟢', overdue: '⚠️' }[status]
+          return (
+            <div key={debt.id} className={`rounded-lg border flex items-center justify-between p-2 text-xs ${statusColor}`}>
+              <span>{icon} {debt.name} due {debt.dueDate ? `day ${debt.dueDate}` : 'N/A'}</span>
+              <span className="font-semibold">{days === 0 ? 'TODAY' : `${Math.abs(days)}d`}</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// Feature component: Scenario Comparison (Snowball vs Avalanche vs Cashflow)
+function ScenarioComparison({ debts, totalIncome, settings }) {
+  const scenarios = {}
+  const strategies = ['snowball', 'interest', 'cashflow']
+  strategies.forEach((strat) => {
+    const timeline = buildBurnDown(debts, strat, debts.reduce((s, d) => s + d.monthlyPayment, 0) + (settings.manualExtra || 0), totalIncome, settings.interestBoost)
+    const debtFreeMonth = timeline.find((item) => item.remaining <= 0)?.month.replace('Month ', '') || '120+'
+    const totalInterest = timeline.reduce((sum, point) => sum + (point.interest || 0), 0)
+    scenarios[strat] = { debtFreeMonth, timeline }
+  })
+  const [selected, setSelected] = useState('cashflow')
+  const timeline = scenarios[selected].timeline
+  return (
+    <section className="mt-5 rounded-2xl border border-slate-700/60 bg-slate-800/70 p-4 shadow-xl shadow-slate-950/30">
+      <h2 className="mb-3 text-xl font-semibold text-slate-100">Payoff Strategies Comparison</h2>
+      <div className="mb-4 flex gap-2">
+        {strategies.map((strat) => (
+          <button key={strat} onClick={() => setSelected(strat)} className={`rounded-lg px-3 py-2 text-xs font-semibold ${selected === strat ? 'border-cyan-400 bg-cyan-500/20 text-cyan-100' : 'border-slate-600 bg-slate-700 text-slate-300'}`}>
+            {strat.charAt(0).toUpperCase() + strat.slice(1)}
+          </button>
+        ))}
+      </div>
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-3">
+          <p className="text-xs text-slate-400">Debt Free Month</p>
+          <p className="mono mt-1 text-xl font-bold text-cyan-300">Month {scenarios[selected].debtFreeMonth}</p>
+        </div>
+        <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-3">
+          <p className="text-xs text-slate-400">Fastest Strategy</p>
+          <p className="mono mt-1 text-sm text-emerald-300">{Object.entries(scenarios).sort((a, b) => parseInt(a[1].debtFreeMonth) - parseInt(b[1].debtFreeMonth))[0][0]}</p>
+        </div>
+        <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-3">
+          <p className="text-xs text-slate-400">Months Saved vs Slowest</p>
+          <p className="mono mt-1 text-sm text-amber-300">{Math.max(...Object.values(scenarios).map((s) => parseInt(s.debtFreeMonth))) - parseInt(scenarios[selected].debtFreeMonth)} months</p>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// Feature component: Creditor Directory
+function CreditorDirectory({ debts }) {
+  return (
+    <section className="mt-5 rounded-2xl border border-slate-700/60 bg-slate-800/70 p-4 shadow-xl shadow-slate-950/30">
+      <h2 className="mb-3 text-lg font-semibold text-slate-100">Creditor Contact Directory</h2>
+      <div className="grid gap-3 md:grid-cols-2">
+        {debts.filter((d) => d.creditorContacts).map((debt) => (
+          <div key={debt.id} className="rounded-lg border border-slate-700 bg-slate-900/70 p-3">
+            <p className="font-semibold text-slate-100">{debt.name}</p>
+            <p className="text-xs text-slate-400">{debt.bank}</p>
+            <div className="mt-2 space-y-1 text-xs">
+              {debt.creditorContacts.phone && (
+                <p>
+                  <span className="text-slate-400">📞 </span>
+                  <a href={`tel:${debt.creditorContacts.phone}`} className="text-cyan-200 hover:underline">
+                    {debt.creditorContacts.phone}
+                  </a>
+                </p>
+              )}
+              {debt.creditorContacts.email && (
+                <p>
+                  <span className="text-slate-400">📧 </span>
+                  <a href={`mailto:${debt.creditorContacts.email}`} className="text-cyan-200 hover:underline">
+                    {debt.creditorContacts.email}
+                  </a>
+                </p>
+              )}
+              {debt.creditorContacts.website && (
+                <p>
+                  <span className="text-slate-400">🌐 </span>
+                  <a href={`https://${debt.creditorContacts.website}`} target="_blank" className="text-cyan-200 hover:underline">
+                    {debt.creditorContacts.website}
+                  </a>
+                </p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+// Feature component: Interest Accrual Tracker
+function InterestAccrualTracker({ debts }) {
+  const totalMonthlyInterest = debts.reduce((sum, d) => sum + (Number(d.financeCharge) || 0), 0)
+  const totalAccruedInterest = debts.reduce((sum, d) => sum + ((Number(d.financeCharge) || 0) * (d.monthsRemaining || 1)), 0)
+  const savingsPerExtra1000 = 25  // Approximation
+  return (
+    <div className="mt-5 rounded-2xl border border-slate-700/60 bg-slate-800/70 p-4 shadow-xl shadow-slate-950/30">
+      <h2 className="text-lg font-semibold text-slate-100">Interest & Savings Analysis</h2>
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="rounded-lg border border-rose-700/40 bg-rose-500/10 p-3">
+          <p className="text-xs text-rose-300">Monthly Interest Charge</p>
+          <p className="mono mt-2 text-xl font-bold text-rose-200">{formatCurrency(totalMonthlyInterest)}</p>
+        </div>
+        <div className="rounded-lg border border-amber-700/40 bg-amber-500/10 p-3">
+          <p className="text-xs text-amber-300">Total Interest (Remaining Months)</p>
+          <p className="mono mt-2 text-xl font-bold text-amber-200">{formatCurrency(totalAccruedInterest)}</p>
+        </div>
+        <div className="rounded-lg border border-emerald-700/40 bg-emerald-500/10 p-3">
+          <p className="text-xs text-emerald-300">Savings per ₱1k Extra/Month</p>
+          <p className="mono mt-2 text-xl font-bold text-emerald-200">≈{formatCurrency(savingsPerExtra1000)}</p>
+        </div>
+      </div>
+      <p className="mt-3 text-xs text-slate-400">💡 Every ₱1,000 extra payment monthly saves roughly {savingsPerExtra1000} PHP in interest over time.</p>
+    </div>
+  )
+}
+
+// Feature component: Historical Performance Dashboard
+function HistoricalDashboard({ debts }) {
+  const totalPaid = debts.reduce((sum, d) => sum + d.paymentHistory.reduce((ps, p) => ps + p.amount, 0), 0)
+  const totalPayments = debts.reduce((sum, d) => sum + d.paymentHistory.length, 0)
+  const avgPaymentSize = totalPayments > 0 ? totalPaid / totalPayments : 0
+  const onTrack = debts.filter((d) => d.remainingBalance > 0 && d.monthsRemaining >= 0).length >= debts.filter((d) => d.remainingBalance > 0).length * 0.8
+  return (
+    <div className="mt-5 rounded-2xl border border-slate-700/60 bg-slate-800/70 p-4 shadow-xl shadow-slate-950/30">
+      <h2 className="text-lg font-semibold text-slate-100">Historical Performance</h2>
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-3">
+          <p className="text-xs text-slate-400">Total Paid</p>
+          <p className="mono mt-2 text-xl font-bold text-cyan-300">{formatCurrency(totalPaid)}</p>
+        </div>
+        <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-3">
+          <p className="text-xs text-slate-400">Payment Count</p>
+          <p className="mono mt-2 text-xl font-bold text-slate-100">{totalPayments}</p>
+        </div>
+        <div className="rounded-lg border border-slate-700 bg-slate-900/70 p-3">
+          <p className="text-xs text-slate-400">Status</p>
+          <p className={`mono mt-2 text-lg font-bold ${onTrack ? 'text-emerald-300' : 'text-amber-300'}`}>{onTrack ? '✓ On Track' : '⚠ Check Goals'}</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Feature component: Debt Consolidation Simulator
+function DebtConsolidationModal({ debts, onClose }) {
+  const [selectedIds, setSelectedIds] = useState([])
+  const [loanRate, setLoanRate] = useState(0.08)
+  const [loanTerm, setLoanTerm] = useState(24)
+  
+  const selectedDebts = debts.filter((d) => selectedIds.includes(d.id))
+  const consolidatedBalance = selectedDebts.reduce((sum, d) => sum + d.remainingBalance, 0)
+  const monthlyPayment = consolidatedBalance > 0 ? (consolidatedBalance * loanRate) / 12 / (1 - Math.pow(1 + loanRate / 12, -loanTerm)) : 0
+  
+  return (
+    <div className="fixed inset-0 z-30 grid place-items-center bg-slate-950/75 p-4">
+      <div className="w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-900 p-5">
+        <h3 className="text-lg font-semibold text-slate-100">Debt Consolidation Simulator</h3>
+        <div className="mt-4 space-y-3 text-sm">
+          <div>
+            <p className="mb-2 text-slate-300">Select debts to consolidate:</p>
+            <div className="space-y-2">
+              {debts.map((d) => (
+                <label key={d.id} className="flex items-center gap-2">
+                  <input type="checkbox" checked={selectedIds.includes(d.id)} onChange={(e) => setSelectedIds(e.target.checked ? [...selectedIds, d.id] : selectedIds.filter((id) => id !== d.id))} className="h-4 w-4 rounded" />
+                  <span className="text-slate-300">{d.name} ({formatCurrency(d.remainingBalance)})</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <label className="block">
+            <span className="mb-1 block text-slate-300">Loan Interest Rate</span>
+            <input type="number" min="0" max="1" step="0.01" value={loanRate} onChange={(e) => setLoanRate(Number(e.target.value))} className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100" />
+            <p className="mt-1 text-xs text-slate-500">{(loanRate * 100).toFixed(1)}%</p>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-slate-300">Loan Term (months)</span>
+            <input type="number" min="6" max="120" value={loanTerm} onChange={(e) => setLoanTerm(Number(e.target.value))} className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100" />
+          </label>
+          {consolidatedBalance > 0 && (
+            <div className="rounded-lg border border-slate-700 bg-slate-800/70 p-3">
+              <p className="text-xs text-slate-400">Total to Consolidate</p>
+              <p className="mono mt-1 font-bold text-cyan-300">{formatCurrency(consolidatedBalance)}</p>
+              <p className="mt-2 text-xs text-slate-400">New Monthly Payment</p>
+              <p className="mono mt-1 font-bold text-emerald-300">{formatCurrency(monthlyPayment)}</p>
+            </div>
+          )}
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-200">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function App() {
   const [debts, setDebts] = useState(seedDebts)
   const [settings, setSettings] = useState(seedSettings)
@@ -687,6 +933,11 @@ function App() {
   })
 
   const [showManage, setShowManage] = useState(false)
+  const [showConsolidationModal, setShowConsolidationModal] = useState(false)
+  const [selectedConsolidationDebts, setSelectedConsolidationDebts] = useState([])
+  const [consolidationRate, setConsolidationRate] = useState(5.5)
+  const [consolidationTerm, setConsolidationTerm] = useState(60)
+  const [selectedPaymentStrategy, setSelectedPaymentStrategy] = useState('snowball')
   const [dbStatus, setDbStatus] = useState('checking')
   const saveTimer = useRef(null)
 
@@ -1356,11 +1607,34 @@ function App() {
         </div>
       )}
 
+      <InterestAccrualTracker debts={debts} />
+
+      <PaymentRemindersCalendar debts={debts} />
+
+      <ScenarioComparison
+        debts={debts}
+        selectedStrategy={selectedPaymentStrategy}
+        onStrategyChange={setSelectedPaymentStrategy}
+      />
+
+      <HistoricalDashboard debts={debts} />
+
+      <CreditorDirectory debts={debts} />
+
       <MinPaymentPlanner
         debts={debts}
         onUpdateDebt={updateDebtField}
         onMarkPayment={(id) => setPaymentDraft((prev) => ({ ...prev, debtId: id, amount: '' }))}
       />
+
+      <div className="mt-5 flex justify-center">
+        <button
+          onClick={() => setShowConsolidationModal(true)}
+          className="rounded-lg border border-indigo-500/70 bg-indigo-500/20 px-6 py-3 font-medium text-indigo-100 transition hover:bg-indigo-500/30"
+        >
+          💰 Consolidation Simulator
+        </button>
+      </div>
 
       {showManage && (
         <ManageDebtsModal
@@ -1368,6 +1642,26 @@ function App() {
           onSave={saveDebt}
           onDelete={deleteDebt}
           onClose={() => setShowManage(false)}
+        />
+      )}
+
+      {showConsolidationModal && (
+        <DebtConsolidationModal
+          debts={debts}
+          selectedDebts={selectedConsolidationDebts}
+          onSelectDebt={(id) =>
+            setSelectedConsolidationDebts((prev) =>
+              prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id],
+            )
+          }
+          consolidationRate={consolidationRate}
+          onRateChange={setConsolidationRate}
+          consolidationTerm={consolidationTerm}
+          onTermChange={setConsolidationTerm}
+          onClose={() => {
+            setShowConsolidationModal(false)
+            setSelectedConsolidationDebts([])
+          }}
         />
       )}
     </div>
