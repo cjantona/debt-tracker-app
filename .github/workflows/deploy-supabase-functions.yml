@@ -12,6 +12,7 @@ on:
 jobs:
   deploy-functions:
     runs-on: ubuntu-latest
+    environment: github-pages
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN || secrets.SUPABASE_PAT || secrets.SUPABASE_TOKEN }}
       SUPABASE_PROJECT_ID: comdmxcwjxlwnbhhypbq
