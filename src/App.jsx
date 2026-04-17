@@ -1048,6 +1048,7 @@ function App() {
   const [selectedPaymentStrategy, setSelectedPaymentStrategy] = useState('snowball')
   const [dbStatus, setDbStatus] = useState('checking')
   const saveTimer = useRef(null)
+  const loaded = useRef(false)
 
   const normalizeDebts = useCallback((value) => {
     const list = Array.isArray(value) ? value : Array.isArray(value?.debts) ? value.debts : null
@@ -1161,11 +1162,11 @@ function App() {
       }
     }
 
-    loadData()
+    loadData().finally(() => { loaded.current = true })
   }, [applyParsed])
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
+    if (typeof window === 'undefined' || !loaded.current) {
       return
     }
     window.localStorage.setItem(
