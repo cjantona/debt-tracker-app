@@ -10,7 +10,7 @@ import {
   YAxis,
 } from 'recharts'
 
-const STORAGE_KEY = 'debt-tracker:v1'
+const STORAGE_KEY = 'debt-tracker:v2'
 const SEED_VERSION = 6 // bump this whenever seedDebts changes
 
 const currency = new Intl.NumberFormat('en-PH', {
