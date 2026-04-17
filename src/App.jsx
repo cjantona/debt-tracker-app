@@ -1613,8 +1613,8 @@ function App() {
 
       <ScenarioComparison
         debts={debts}
-        selectedStrategy={selectedPaymentStrategy}
-        onStrategyChange={setSelectedPaymentStrategy}
+        totalIncome={totalIncome}
+        settings={settings}
       />
 
       <HistoricalDashboard debts={debts} />
