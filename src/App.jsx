@@ -986,7 +986,7 @@ function App() {
 
       const normalized = {
         ...item,
-        id: item?.id || seedMatch?.id || `debt-${index}`,
+        id: seedMatch?.id || item?.id || `debt-${index}`,
         paymentHistory: Array.isArray(item?.paymentHistory) ? item.paymentHistory : [],
         minDueRate: Number(item?.minDueRate) || 0.03,
         dueDate: item?.dueDate ?? seedMatch?.dueDate,
