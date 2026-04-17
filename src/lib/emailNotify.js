@@ -1,36 +1,33 @@
 import emailjs from '@emailjs/browser'
 import { rankDebts, groupFingerprint } from './priority.js'
+import { supabase } from './supabase.js'
 
-// ── Supabase state sync ───────────────────────────────────────────────────────
-const SB_URL = import.meta.env.VITE_SUPABASE_URL || ''
-const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-
+// ── Supabase state sync (user-scoped via session) ─────────────────────────────
 async function sbGetNotifState() {
-  if (!SB_URL || !SB_KEY) return null
+  const { data: { session } } = await supabase.auth.getSession()
+  const userId = session?.user?.id
+  if (!userId) return null
   try {
-    const res = await fetch(
-      `${SB_URL}/rest/v1/kv_store?key=eq.email-notif-state&select=data&limit=1`,
-      { headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } },
-    )
-    if (!res.ok) return null
-    const rows = await res.json()
-    return rows[0]?.data ?? null
+    const { data } = await supabase
+      .from('kv_store')
+      .select('data')
+      .eq('user_id', userId)
+      .eq('key', 'email-notif-state')
+      .limit(1)
+      .single()
+    return data?.data ?? null
   } catch { return null }
 }
 
-async function sbSetNotifState(data) {
-  if (!SB_URL || !SB_KEY) return
+async function sbSetNotifState(state) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const userId = session?.user?.id
+  if (!userId) return
   try {
-    await fetch(`${SB_URL}/rest/v1/kv_store`, {
-      method: 'POST',
-      headers: {
-        apikey: SB_KEY,
-        Authorization: `Bearer ${SB_KEY}`,
-        'Content-Type': 'application/json',
-        Prefer: 'resolution=merge-duplicates,return=minimal',
-      },
-      body: JSON.stringify({ key: 'email-notif-state', data }),
-    })
+    await supabase.from('kv_store').upsert(
+      { user_id: userId, key: 'email-notif-state', data: state },
+      { onConflict: 'user_id,key' },
+    )
   } catch { /* ignore */ }
 }
 

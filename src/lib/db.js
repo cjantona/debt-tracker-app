@@ -1,3 +1,5 @@
+import { supabase } from './supabase'
+
 // ── PocketBase (local) ──────────────────────────────────────────────────────
 const PB_URL = import.meta.env.VITE_PB_URL || 'http://127.0.0.1:8090'
 const COLLECTION = 'kv_store'
@@ -64,61 +66,44 @@ async function pbSave(key, data) {
   }
 }
 
-// ── Supabase (cloud fallback) ─────────────────────────────────────────────────
-// Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local to enable.
-// Table required: kv_store (key text primary key, data jsonb)
-const SB_URL = import.meta.env.VITE_SUPABASE_URL || ''
-const SB_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-const SB_TABLE = 'kv_store'
-
-function sbHeaders() {
-  return {
-    'Content-Type': 'application/json',
-    apikey: SB_KEY,
-    Authorization: `Bearer ${SB_KEY}`,
-    Prefer: 'return=minimal',
-  }
-}
-
+// ── Supabase (cloud) — uses @supabase/supabase-js client with auth session ────
 async function sbCheckConnection() {
-  if (!SB_URL || !SB_KEY) return false
+  if (!import.meta.env.VITE_SUPABASE_URL) return false
   try {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 4000)
-    const res = await fetch(
-      `${SB_URL}/rest/v1/${SB_TABLE}?key=eq.__health__&select=key&limit=1`,
-      { headers: sbHeaders(), signal: controller.signal },
-    )
-    clearTimeout(timer)
-    return res.ok
+    const { error } = await supabase.from('kv_store').select('key').limit(1)
+    return !error
   } catch {
     return false
   }
 }
 
 async function sbLoad(key) {
-  const res = await fetch(
-    `${SB_URL}/rest/v1/${SB_TABLE}?key=eq.${encodeURIComponent(key)}&select=data&limit=1`,
-    { headers: sbHeaders() },
-  )
-  if (!res.ok) throw new Error(`Supabase load ${res.status}`)
-  const rows = await res.json()
-  return rows[0]?.data ?? null
+  const { data: { session } } = await supabase.auth.getSession()
+  const userId = session?.user?.id
+  if (!userId) return null
+
+  const { data, error } = await supabase
+    .from('kv_store')
+    .select('data')
+    .eq('user_id', userId)
+    .eq('key', key)
+    .limit(1)
+    .single()
+
+  if (error && error.code !== 'PGRST116') throw error // PGRST116 = no rows
+  return data?.data ?? null
 }
 
-async function sbSave(key, data) {
-  const res = await fetch(`${SB_URL}/rest/v1/${SB_TABLE}`, {
-    method: 'POST',
-    headers: {
-      ...sbHeaders(),
-      Prefer: 'resolution=merge-duplicates,return=minimal',
-    },
-    body: JSON.stringify({ key, data }),
-  })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`Supabase save ${res.status}: ${text}`)
-  }
+async function sbSave(key, value) {
+  const { data: { session } } = await supabase.auth.getSession()
+  const userId = session?.user?.id
+  if (!userId) throw new Error('Not authenticated')
+
+  const { error } = await supabase
+    .from('kv_store')
+    .upsert({ user_id: userId, key, data: value }, { onConflict: 'user_id,key' })
+
+  if (error) throw error
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────

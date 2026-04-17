@@ -12,32 +12,43 @@ const SUPABASE_URL         = Deno.env.get('SUPABASE_URL')         ?? ''
 const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 const KV_TABLE = 'kv_store'
 
-// ── Supabase helpers ─────────────────────────────────────────────────────────
-async function sbGet(key: string) {
+// ── Supabase helpers (service role — bypasses RLS) ─────────────────────────────
+function sbHeaders() {
+  return {
+    apikey: SUPABASE_SERVICE_KEY,
+    Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+    'Content-Type': 'application/json',
+  }
+}
+
+/** Get all distinct user_ids that have a 'settings' row with emailNotifEnabled=true */
+async function getActiveUserIds(): Promise<string[]> {
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/${KV_TABLE}?key=eq.${encodeURIComponent(key)}&select=data&limit=1`,
-    {
-      headers: {
-        apikey: SUPABASE_SERVICE_KEY,
-        Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
-      },
-    },
+    `${SUPABASE_URL}/rest/v1/${KV_TABLE}?key=eq.settings&select=user_id,data`,
+    { headers: sbHeaders() },
+  )
+  if (!res.ok) return []
+  const rows: { user_id: string; data: Record<string, unknown> }[] = await res.json()
+  return rows
+    .filter((r) => r.data?.emailNotifEnabled && r.data?.userEmail)
+    .map((r) => r.user_id)
+}
+
+async function sbGetForUser(userId: string, key: string) {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/${KV_TABLE}?user_id=eq.${userId}&key=eq.${encodeURIComponent(key)}&select=data&limit=1`,
+    { headers: sbHeaders() },
   )
   if (!res.ok) return null
   const rows = await res.json()
   return rows[0]?.data ?? null
 }
 
-async function sbSet(key: string, data: unknown) {
+async function sbSetForUser(userId: string, key: string, data: unknown) {
   await fetch(`${SUPABASE_URL}/rest/v1/${KV_TABLE}`, {
     method: 'POST',
-    headers: {
-      apikey: SUPABASE_SERVICE_KEY,
-      Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
-      'Content-Type': 'application/json',
-      Prefer: 'resolution=merge-duplicates,return=minimal',
-    },
-    body: JSON.stringify({ key, data }),
+    headers: { ...sbHeaders(), Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({ user_id: userId, key, data }),
   })
 }
 
@@ -121,112 +132,117 @@ async function sendEmail(params: Record<string, unknown>) {
 
 // ── Main handler ──────────────────────────────────────────────────────────────
 serve(async () => {
-  const log: string[] = []
+  const globalLog: string[] = []
 
   try {
     if (!EMAILJS_SERVICE_ID || !EMAILJS_TEMPLATE_ID || !EMAILJS_PUBLIC_KEY) {
       return new Response(JSON.stringify({ error: 'EmailJS env vars not set' }), { status: 500 })
     }
 
-    // Load debts and settings from Supabase kv_store
-    const [debtsRaw, settings] = await Promise.all([sbGet('debts'), sbGet('settings')])
-    if (!debtsRaw || !Array.isArray(debtsRaw)) {
-      return new Response(JSON.stringify({ error: 'No debts found in kv_store' }), { status: 404 })
+    // Find all users with email notifications enabled
+    const userIds = await getActiveUserIds()
+    if (userIds.length === 0) {
+      return new Response(JSON.stringify({ skipped: 'No users with email notifications enabled' }), { status: 200 })
     }
-
-    const debts: Debt[]     = debtsRaw as Debt[]
-    const userEmail: string = String(settings?.userEmail ?? '')
-    const emailEnabled      = Boolean(settings?.emailNotifEnabled ?? false)
-    const strategy: string  = String(settings?.strategy ?? 'cashflow')
-    const income: number    = Number(settings?.income ?? 0)
-    const interestBoost     = Boolean(settings?.interestBoost ?? true)
-
-    if (!emailEnabled || !userEmail) {
-      return new Response(
-        JSON.stringify({ skipped: 'Email notifications disabled or no email set' }),
-        { status: 200 },
-      )
-    }
-
-    // Load sent-state
-    const notifState: { sent: Record<string, { sentAt: string; fingerprint: string }> } =
-      (await sbGet('email-notif-state')) ?? { sent: {} }
 
     const now = new Date()
     const todayPH = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }))
     todayPH.setHours(0, 0, 0, 0)
     const dayMs = 24 * 60 * 60 * 1000
 
-    // Active debts only
-    const active = debts.filter((d) => Number(d.remainingBalance ?? 0) > 0 && d.dueDate)
+    // Process each user independently
+    for (const userId of userIds) {
+      const log: string[] = []
 
-    // Top-priority debt using same scoreDebt() as the React app
-    const ranked  = rankDebts(active, strategy, income, interestBoost)
-    const topName = String(ranked[0]?.name ?? active[0]?.name ?? '')
+      const [debtsRaw, settings, notifStateRaw] = await Promise.all([
+        sbGetForUser(userId, 'debts'),
+        sbGetForUser(userId, 'settings'),
+        sbGetForUser(userId, 'email-notif-state'),
+      ])
 
-    // Group by next-due date string (YYYY-MM-DD)
-    const byDate: Record<string, { date: Date; debts: Debt[] }> = {}
-    for (const d of active) {
-      const next = getNextDueDate(Number(d.dueDate))
-      const key  = next.toISOString().slice(0, 10)
-      if (!byDate[key]) byDate[key] = { date: next, debts: [] }
-      byDate[key].debts.push(d)
-    }
+      if (!debtsRaw || !Array.isArray(debtsRaw)) {
+        globalLog.push(`[${userId.slice(0, 8)}] SKIP — no debts`)
+        continue
+      }
 
-    for (const [dateStr, group] of Object.entries(byDate)) {
-      const daysLeft = Math.round((group.date.getTime() - todayPH.getTime()) / dayMs)
+      const debts: Debt[]     = debtsRaw as Debt[]
+      const userEmail: string = String(settings?.userEmail ?? '')
+      const strategy: string  = String(settings?.strategy ?? 'cashflow')
+      const income: number    = Number(settings?.income ?? 0)
+      const interestBoost     = Boolean(settings?.interestBoost ?? true)
 
-      for (const win of WINDOWS) {
-        if (daysLeft !== win.days) continue
+      const notifState: { sent: Record<string, { sentAt: string; fingerprint: string }> } =
+        (notifStateRaw as typeof notifState) ?? { sent: {} }
 
-        const stateKey    = `${dateStr}-${win.label}`
-        const fingerprint = groupFingerprint(group.debts, stateKey)
-        const prev        = notifState.sent[stateKey]
+      // Active debts only
+      const active = debts.filter((d) => Number(d.remainingBalance ?? 0) > 0 && d.dueDate)
+      const ranked  = rankDebts(active, strategy, income, interestBoost)
+      const topName = String(ranked[0]?.name ?? active[0]?.name ?? '')
 
-        if (prev?.fingerprint === fingerprint) {
-          log.push(`SKIP ${stateKey} (identical group, already sent)`)
-          continue
-        }
+      // Group by next-due date
+      const byDate: Record<string, { date: Date; debts: Debt[] }> = {}
+      for (const d of active) {
+        const next = getNextDueDate(Number(d.dueDate))
+        const key  = next.toISOString().slice(0, 10)
+        if (!byDate[key]) byDate[key] = { date: next, debts: [] }
+        byDate[key].debts.push(d)
+      }
 
-        const totalDue = group.debts.reduce(
-          (s, d) => s + Number(d.minimumPayment ?? d.monthlyPayment ?? 0),
-          0,
-        )
-        const debtListText = group.debts
-          .map((d) => `• ${d.name} – ${formatPHP(Number(d.minimumPayment ?? d.monthlyPayment ?? 0))}`)
-          .join('\n')
-        const debtListHtml = group.debts
-          .map(
-            (d) =>
-              `<tr><td style="padding:6px 12px 6px 0;color:#cbd5e1;font-size:14px;">${d.name}</td>` +
-              `<td align="right" style="padding:6px 0;color:#f1f5f9;font-size:14px;font-weight:600;">${formatPHP(Number(d.minimumPayment ?? d.monthlyPayment ?? 0))}</td></tr>`,
+      for (const [dateStr, group] of Object.entries(byDate)) {
+        const daysLeft = Math.round((group.date.getTime() - todayPH.getTime()) / dayMs)
+
+        for (const win of WINDOWS) {
+          if (daysLeft !== win.days) continue
+
+          const stateKey    = `${dateStr}-${win.label}`
+          const fingerprint = groupFingerprint(group.debts, stateKey)
+          const prev        = notifState.sent[stateKey]
+
+          if (prev?.fingerprint === fingerprint) {
+            log.push(`SKIP ${stateKey} (identical, already sent)`)
+            continue
+          }
+
+          const totalDue = group.debts.reduce(
+            (s, d) => s + Number(d.minimumPayment ?? d.monthlyPayment ?? 0), 0,
           )
-          .join('')
+          const debtListText = group.debts
+            .map((d) => `• ${d.name} – ${formatPHP(Number(d.minimumPayment ?? d.monthlyPayment ?? 0))}`)
+            .join('\n')
+          const debtListHtml = group.debts
+            .map(
+              (d) =>
+                `<tr><td style="padding:6px 12px 6px 0;color:#cbd5e1;font-size:14px;">${d.name}</td>` +
+                `<td align="right" style="padding:6px 0;color:#f1f5f9;font-size:14px;font-weight:600;">${formatPHP(Number(d.minimumPayment ?? d.monthlyPayment ?? 0))}</td></tr>`,
+            )
+            .join('')
 
-        try {
-          await sendEmail({
-            to_email:       userEmail,
-            subject:        win.subject,
-            due_date:       formatDateLong(group.date),
-            days_left:      win.days,
-            debt_count:     group.debts.length,
-            total_due:      formatPHP(totalDue),
-            debt_list:      debtListText,
-            debt_list_html: debtListHtml,
-            priority_debt:  topName,
-          })
-          notifState.sent[stateKey] = { sentAt: new Date().toISOString(), fingerprint }
-          log.push(`SENT ${stateKey} to ${userEmail}`)
-        } catch (err) {
-          log.push(`ERROR ${stateKey}: ${(err as Error).message}`)
+          try {
+            await sendEmail({
+              to_email:       userEmail,
+              subject:        win.subject,
+              due_date:       formatDateLong(group.date),
+              days_left:      win.days,
+              debt_count:     group.debts.length,
+              total_due:      formatPHP(totalDue),
+              debt_list:      debtListText,
+              debt_list_html: debtListHtml,
+              priority_debt:  topName,
+            })
+            notifState.sent[stateKey] = { sentAt: new Date().toISOString(), fingerprint }
+            log.push(`SENT ${stateKey} to ${userEmail}`)
+          } catch (err) {
+            log.push(`ERROR ${stateKey}: ${(err as Error).message}`)
+          }
         }
       }
+
+      // Persist updated sent-state for this user
+      await sbSetForUser(userId, 'email-notif-state', notifState)
+      globalLog.push(`[${userId.slice(0, 8)}] ${log.join(' | ') || 'nothing to send'}`)
     }
 
-    // Persist updated sent-state
-    await sbSet('email-notif-state', notifState)
-
-    return new Response(JSON.stringify({ ok: true, log }), {
+    return new Response(JSON.stringify({ ok: true, users: userIds.length, log: globalLog }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     })

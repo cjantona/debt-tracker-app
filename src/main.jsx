@@ -1,7 +1,9 @@
 import { Component, StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { HashRouter } from 'react-router-dom'
+import { AuthProvider } from './contexts/AuthContext'
+import AppRouter from './AppRouter'
 import './index.css'
-import App from './App.jsx'
 
 function showRuntimeError(message) {
   if (typeof document === 'undefined') return
@@ -84,7 +86,11 @@ class RootErrorBoundary extends Component {
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <RootErrorBoundary>
-      <App />
+      <HashRouter>
+        <AuthProvider>
+          <AppRouter />
+        </AuthProvider>
+      </HashRouter>
     </RootErrorBoundary>
   </StrictMode>,
 )

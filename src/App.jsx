@@ -7,6 +7,7 @@ import {
   loadEmailNotifState,
 } from './lib/emailNotify'
 import { scoreDebt, rankDebts } from './lib/priority.js'
+import { useAuth } from './contexts/AuthContext'
 import {
   Area,
   AreaChart,
@@ -1031,6 +1032,7 @@ function DebtConsolidationModal({ debts, onClose }) {
 }
 
 function App() {
+  const { user, signOut } = useAuth()
   const [debts, setDebts] = useState(seedDebts)
   const [settings, setSettings] = useState(seedSettings)
 
@@ -1512,6 +1514,19 @@ function App() {
           >
             📧 {settings.emailNotifEnabled ? 'Email On' : 'Email Off'}
           </button>
+          {/* User + logout */}
+          {user && (
+            <span className="flex items-center gap-2 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-xs text-slate-300">
+              <span className="max-w-[120px] truncate opacity-70">{user.email}</span>
+              <button
+                onClick={signOut}
+                className="text-rose-400 hover:text-rose-300 font-medium transition-colors"
+                title="Sign out"
+              >
+                Sign out
+              </button>
+            </span>
+          )}
         </div>
       </header>
 
