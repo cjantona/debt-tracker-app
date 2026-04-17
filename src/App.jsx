@@ -969,11 +969,45 @@ function App() {
     if (!list) {
       return null
     }
-    return list.map((item) => ({
-      ...item,
-      paymentHistory: Array.isArray(item.paymentHistory) ? item.paymentHistory : [],
-      minDueRate: Number(item.minDueRate) || 0.03,
-    }))
+    const seedByNameBank = new Map(
+      seedDebts.map((seed) => [
+        `${String(seed.name || '').trim().toLowerCase()}|${String(seed.bank || '').trim().toLowerCase()}`,
+        seed,
+      ]),
+    )
+
+    const deduped = new Map()
+
+    list.forEach((item, index) => {
+      const nameKey = String(item?.name || '').trim().toLowerCase()
+      const bankKey = String(item?.bank || '').trim().toLowerCase()
+      const pairKey = `${nameKey}|${bankKey}`
+      const seedMatch = seedByNameBank.get(pairKey)
+
+      const normalized = {
+        ...item,
+        id: item?.id || seedMatch?.id || `debt-${index}`,
+        paymentHistory: Array.isArray(item?.paymentHistory) ? item.paymentHistory : [],
+        minDueRate: Number(item?.minDueRate) || 0.03,
+        dueDate: item?.dueDate ?? seedMatch?.dueDate,
+        creditorContacts: item?.creditorContacts ?? seedMatch?.creditorContacts,
+      }
+
+      const dedupeKey = seedMatch?.id || `${normalized.id}|${pairKey}`
+      const existing = deduped.get(dedupeKey)
+      if (!existing) {
+        deduped.set(dedupeKey, normalized)
+        return
+      }
+
+      const existingScore = (existing.dueDate ? 2 : 0) + existing.paymentHistory.length
+      const nextScore = (normalized.dueDate ? 2 : 0) + normalized.paymentHistory.length
+      if (nextScore >= existingScore) {
+        deduped.set(dedupeKey, { ...existing, ...normalized })
+      }
+    })
+
+    return Array.from(deduped.values())
   }, [])
 
   const applyParsed = useCallback((parsed) => {
