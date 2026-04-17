@@ -11,7 +11,7 @@ import {
 } from 'recharts'
 
 const STORAGE_KEY = 'debt-tracker:v1'
-const SEED_VERSION = 5 // bump this whenever seedDebts changes
+const SEED_VERSION = 6 // bump this whenever seedDebts changes
 
 const currency = new Intl.NumberFormat('en-PH', {
   style: 'currency',
@@ -976,6 +976,8 @@ function App() {
           financeCharge: saved.financeCharge ?? seed.financeCharge,
           minDueRate: saved.minDueRate ?? seed.minDueRate,
           paymentHistory: saved.paymentHistory ?? [],
+          dueDate: saved.dueDate ?? seed.dueDate,
+          creditorContacts: saved.creditorContacts ?? seed.creditorContacts,
         }
       })
       const seedIds = new Set(seedDebts.map((s) => s.id))
