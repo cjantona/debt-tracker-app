@@ -25,3 +25,6 @@ dist-ssr
 
 # PocketBase (local only)
 pocketbase/
+
+# Supabase local state
+supabase/.temp/
