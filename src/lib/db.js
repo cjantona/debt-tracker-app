@@ -68,7 +68,7 @@ async function pbSave(key, data) {
 
 // ── Supabase (cloud) — uses @supabase/supabase-js client with auth session ────
 async function sbCheckConnection() {
-  if (!import.meta.env.VITE_SUPABASE_URL) return false
+  if (!supabase || !import.meta.env.VITE_SUPABASE_URL) return false
   try {
     const { error } = await supabase.from('kv_store').select('key').limit(1)
     return !error
@@ -78,6 +78,7 @@ async function sbCheckConnection() {
 }
 
 async function sbLoad(key) {
+  if (!supabase) return null
   const { data: { session } } = await supabase.auth.getSession()
   const userId = session?.user?.id
   if (!userId) return null
@@ -95,6 +96,7 @@ async function sbLoad(key) {
 }
 
 async function sbSave(key, value) {
+  if (!supabase) throw new Error('Supabase is not configured')
   const { data: { session } } = await supabase.auth.getSession()
   const userId = session?.user?.id
   if (!userId) throw new Error('Not authenticated')

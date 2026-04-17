@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, supabaseEnabled } from '../lib/supabase'
 
 const AuthContext = createContext(null)
 
@@ -8,11 +8,23 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Initial session check
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
+    if (!supabaseEnabled || !supabase) {
+      setUser(null)
       setLoading(false)
-    })
+      return
+    }
+
+    // Initial session check
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        setUser(session?.user ?? null)
+      })
+      .catch(() => {
+        setUser(null)
+      })
+      .finally(() => {
+        setLoading(false)
+      })
 
     // Listen for auth state changes (login, logout, token refresh, email confirm)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -23,6 +35,9 @@ export function AuthProvider({ children }) {
   }, [])
 
   const signUp = useCallback(async (email, password) => {
+    if (!supabaseEnabled || !supabase) {
+      return { data: null, error: new Error('Supabase is not configured') }
+    }
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -34,11 +49,15 @@ export function AuthProvider({ children }) {
   }, [])
 
   const signIn = useCallback(async (email, password) => {
+    if (!supabaseEnabled || !supabase) {
+      return { data: null, error: new Error('Supabase is not configured') }
+    }
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     return { data, error }
   }, [])
 
   const signOut = useCallback(async () => {
+    if (!supabaseEnabled || !supabase) return
     await supabase.auth.signOut()
   }, [])
 

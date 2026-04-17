@@ -4,6 +4,7 @@ import { supabase } from './supabase.js'
 
 // ── Supabase state sync (user-scoped via session) ─────────────────────────────
 async function sbGetNotifState() {
+  if (!supabase) return null
   const { data: { session } } = await supabase.auth.getSession()
   const userId = session?.user?.id
   if (!userId) return null
@@ -20,6 +21,7 @@ async function sbGetNotifState() {
 }
 
 async function sbSetNotifState(state) {
+  if (!supabase) return
   const { data: { session } } = await supabase.auth.getSession()
   const userId = session?.user?.id
   if (!userId) return
