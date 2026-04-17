@@ -70,53 +70,65 @@ alter table public.settings enable row level security;
 alter table public.notifications_log enable row level security;
 
 -- debts policies
-create policy if not exists "debts_select_own" on public.debts
-for select to authenticated using (auth.uid() = user_id);
-
-create policy if not exists "debts_insert_own" on public.debts
-for insert to authenticated with check (auth.uid() = user_id);
-
-create policy if not exists "debts_update_own" on public.debts
-for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-create policy if not exists "debts_delete_own" on public.debts
-for delete to authenticated using (auth.uid() = user_id);
+do $$ begin
+  if not exists (select 1 from pg_policies where tablename='debts' and policyname='debts_select_own') then
+    create policy "debts_select_own" on public.debts for select to authenticated using (auth.uid() = user_id);
+  end if;
+  if not exists (select 1 from pg_policies where tablename='debts' and policyname='debts_insert_own') then
+    create policy "debts_insert_own" on public.debts for insert to authenticated with check (auth.uid() = user_id);
+  end if;
+  if not exists (select 1 from pg_policies where tablename='debts' and policyname='debts_update_own') then
+    create policy "debts_update_own" on public.debts for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  end if;
+  if not exists (select 1 from pg_policies where tablename='debts' and policyname='debts_delete_own') then
+    create policy "debts_delete_own" on public.debts for delete to authenticated using (auth.uid() = user_id);
+  end if;
+end $$;
 
 -- payments policies
-create policy if not exists "payments_select_own" on public.payments
-for select to authenticated using (auth.uid() = user_id);
-
-create policy if not exists "payments_insert_own" on public.payments
-for insert to authenticated with check (auth.uid() = user_id);
-
-create policy if not exists "payments_update_own" on public.payments
-for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-create policy if not exists "payments_delete_own" on public.payments
-for delete to authenticated using (auth.uid() = user_id);
+do $$ begin
+  if not exists (select 1 from pg_policies where tablename='payments' and policyname='payments_select_own') then
+    create policy "payments_select_own" on public.payments for select to authenticated using (auth.uid() = user_id);
+  end if;
+  if not exists (select 1 from pg_policies where tablename='payments' and policyname='payments_insert_own') then
+    create policy "payments_insert_own" on public.payments for insert to authenticated with check (auth.uid() = user_id);
+  end if;
+  if not exists (select 1 from pg_policies where tablename='payments' and policyname='payments_update_own') then
+    create policy "payments_update_own" on public.payments for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  end if;
+  if not exists (select 1 from pg_policies where tablename='payments' and policyname='payments_delete_own') then
+    create policy "payments_delete_own" on public.payments for delete to authenticated using (auth.uid() = user_id);
+  end if;
+end $$;
 
 -- settings policies
-create policy if not exists "settings_select_own" on public.settings
-for select to authenticated using (auth.uid() = user_id);
-
-create policy if not exists "settings_insert_own" on public.settings
-for insert to authenticated with check (auth.uid() = user_id);
-
-create policy if not exists "settings_update_own" on public.settings
-for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-create policy if not exists "settings_delete_own" on public.settings
-for delete to authenticated using (auth.uid() = user_id);
+do $$ begin
+  if not exists (select 1 from pg_policies where tablename='settings' and policyname='settings_select_own') then
+    create policy "settings_select_own" on public.settings for select to authenticated using (auth.uid() = user_id);
+  end if;
+  if not exists (select 1 from pg_policies where tablename='settings' and policyname='settings_insert_own') then
+    create policy "settings_insert_own" on public.settings for insert to authenticated with check (auth.uid() = user_id);
+  end if;
+  if not exists (select 1 from pg_policies where tablename='settings' and policyname='settings_update_own') then
+    create policy "settings_update_own" on public.settings for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  end if;
+  if not exists (select 1 from pg_policies where tablename='settings' and policyname='settings_delete_own') then
+    create policy "settings_delete_own" on public.settings for delete to authenticated using (auth.uid() = user_id);
+  end if;
+end $$;
 
 -- notifications policies
-create policy if not exists "notifications_select_own" on public.notifications_log
-for select to authenticated using (auth.uid() = user_id);
-
-create policy if not exists "notifications_insert_own" on public.notifications_log
-for insert to authenticated with check (auth.uid() = user_id);
-
-create policy if not exists "notifications_update_own" on public.notifications_log
-for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-create policy if not exists "notifications_delete_own" on public.notifications_log
-for delete to authenticated using (auth.uid() = user_id);
+do $$ begin
+  if not exists (select 1 from pg_policies where tablename='notifications_log' and policyname='notifications_select_own') then
+    create policy "notifications_select_own" on public.notifications_log for select to authenticated using (auth.uid() = user_id);
+  end if;
+  if not exists (select 1 from pg_policies where tablename='notifications_log' and policyname='notifications_insert_own') then
+    create policy "notifications_insert_own" on public.notifications_log for insert to authenticated with check (auth.uid() = user_id);
+  end if;
+  if not exists (select 1 from pg_policies where tablename='notifications_log' and policyname='notifications_update_own') then
+    create policy "notifications_update_own" on public.notifications_log for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+  end if;
+  if not exists (select 1 from pg_policies where tablename='notifications_log' and policyname='notifications_delete_own') then
+    create policy "notifications_delete_own" on public.notifications_log for delete to authenticated using (auth.uid() = user_id);
+  end if;
+end $$;
