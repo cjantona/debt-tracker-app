@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { checkConnection, dbLoad, dbSave } from './lib/db'
 import {
+  checkAndSendEmailNotifications,
+  isEmailJsConfigured,
+  loadEmailNotifState,
+} from './lib/emailNotify'
+import {
   Area,
   AreaChart,
   CartesianGrid,
@@ -177,6 +182,8 @@ const seedSettings = {
     { month: 5, year: 2026, amount: 50000 },
     { month: 12, year: 2026, amount: 75000 },
   ],
+  userEmail: '',
+  emailNotifEnabled: false,
 }
 
 function formatCurrency(value) {
@@ -1282,7 +1289,41 @@ function App() {
     setDebts((prev) => prev.filter((d) => d.id !== id))
   }
 
-  // ── Notifications ────────────────────────────────────────────────────────
+  // ── Email Notifications ──────────────────────────────────────────────────
+  const [showEmailSetup, setShowEmailSetup] = useState(false)
+  const [emailDraft, setEmailDraft] = useState('')
+  const [emailStatus, setEmailStatus] = useState(null) // null | 'sending' | 'sent' | 'error'
+  const [emailLastSent, setEmailLastSent] = useState(() => loadEmailNotifState().lastEmailSent)
+
+  // Run email check: on load and every 6 hours
+  const runEmailCheck = useCallback(async () => {
+    if (!settings.emailNotifEnabled || !settings.userEmail) return
+    setEmailStatus('sending')
+    try {
+      const result = await checkAndSendEmailNotifications(
+        debts,
+        settings.userEmail,
+        rankedDebts[0]?.name,
+      )
+      if (result.sent) {
+        setEmailLastSent(result.lastEmailSent)
+        setEmailStatus('sent')
+      } else {
+        setEmailStatus(result.reason === 'EmailJS not configured' ? 'unconfigured' : null)
+      }
+    } catch {
+      setEmailStatus('error')
+    }
+  }, [debts, settings.emailNotifEnabled, settings.userEmail, rankedDebts])
+
+  useEffect(() => {
+    if (!settings.emailNotifEnabled) return
+    runEmailCheck()
+    const interval = setInterval(runEmailCheck, 6 * 60 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [settings.emailNotifEnabled, runEmailCheck])
+
+  // ── Browser Notifications ─────────────────────────────────────────────────
   const [notifPermission, setNotifPermission] = useState(
     typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',
   )
@@ -1465,8 +1506,99 @@ function App() {
               </button>
             )
           )}
+          {/* Email Notifications button */}
+          <button
+            onClick={() => { setEmailDraft(settings.userEmail || ''); setShowEmailSetup(true) }}
+            className={`rounded-lg border px-3 py-2 text-xs font-medium ${
+              settings.emailNotifEnabled
+                ? 'border-violet-500/60 bg-violet-500/15 text-violet-200 hover:bg-violet-500/25'
+                : 'border-slate-600 bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            📧 {settings.emailNotifEnabled ? 'Email On' : 'Email Off'}
+          </button>
         </div>
       </header>
+
+      {/* Email last-sent badge */}
+      {emailLastSent && settings.emailNotifEnabled && (
+        <div className="mb-2 flex items-center gap-2 rounded-xl border border-violet-400/40 bg-violet-500/10 px-4 py-2 text-xs text-violet-200">
+          📧 Email notification sent {new Date(emailLastSent).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          {emailStatus === 'sending' && <span className="ml-1 opacity-60">· checking now…</span>}
+          {emailStatus === 'error' && <span className="ml-1 text-rose-300">· last send failed</span>}
+        </div>
+      )}
+
+      {/* Email setup modal */}
+      {showEmailSetup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
+            <h2 className="mb-4 text-lg font-semibold text-slate-100">📧 Email Notifications</h2>
+
+            {!isEmailJsConfigured() && (
+              <div className="mb-4 rounded-lg border border-amber-500/50 bg-amber-500/10 p-3 text-xs text-amber-200">
+                ⚠️ EmailJS is not configured. Set{' '}
+                <code className="font-mono">VITE_EMAILJS_SERVICE_ID</code>,{' '}
+                <code className="font-mono">VITE_EMAILJS_TEMPLATE_ID</code>, and{' '}
+                <code className="font-mono">VITE_EMAILJS_PUBLIC_KEY</code> in your{' '}
+                <code className="font-mono">.env.local</code> file.
+              </div>
+            )}
+
+            <label className="mb-1 block text-sm text-slate-300">Your email address</label>
+            <input
+              type="email"
+              value={emailDraft}
+              onChange={(e) => setEmailDraft(e.target.value)}
+              placeholder="you@example.com"
+              className="mb-4 w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
+            />
+
+            <p className="mb-3 text-xs text-slate-400">
+              You'll receive <strong>one grouped email</strong> per due date when payments are due in
+              7 days, 3 days, or tomorrow. No duplicates.
+            </p>
+
+            <div className="mb-5 space-y-1 rounded-lg border border-slate-700 bg-slate-800/50 p-3 text-xs text-slate-300">
+              <div className="font-medium text-slate-200">Notification windows:</div>
+              <div>🟢 7 days before — early heads-up</div>
+              <div>🟡 3 days before — action reminder</div>
+              <div>🔴 1 day before — urgent alert</div>
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={settings.emailNotifEnabled}
+                  onChange={(e) =>
+                    setSettings((prev) => ({ ...prev, emailNotifEnabled: e.target.checked }))
+                  }
+                  className="h-4 w-4 accent-violet-500"
+                />
+                Enable email notifications
+              </label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowEmailSetup(false)}
+                  className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    setSettings((prev) => ({ ...prev, userEmail: emailDraft.trim() }))
+                    setShowEmailSetup(false)
+                  }}
+                  className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-500"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {visibleAlerts.length > 0 && (
         <div className="mb-4 space-y-2">
