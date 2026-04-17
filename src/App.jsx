@@ -11,7 +11,7 @@ import {
 } from 'recharts'
 
 const STORAGE_KEY = 'debt-tracker:v2'
-const SEED_VERSION = 7 // bump this whenever seedDebts changes
+const SEED_VERSION = 9 // bump this whenever seedDebts changes
 
 const currency = new Intl.NumberFormat('en-PH', {
   style: 'currency',
@@ -64,7 +64,7 @@ const seedDebts = [
     financeCharge: 0,
     minDueRate: 0.03,
     paymentHistory: [],
-    dueDate: 4,
+    dueDate: 6,
     creditorContacts: { phone: '1800-888-8822', email: 'cc@rcbc.com', website: 'rcbc.com' },
   },
   {
@@ -130,7 +130,7 @@ const seedDebts = [
     financeCharge: 0,
     minDueRate: 0.03,
     paymentHistory: [],
-    dueDate: 15,
+    dueDate: 16,
     creditorContacts: { phone: '1800-188-1919', email: 'cards@bdo.com.ph', website: 'bdo.com.ph' },
   },
   {
@@ -146,7 +146,7 @@ const seedDebts = [
     financeCharge: 0,
     minDueRate: 0.03,
     paymentHistory: [],
-    dueDate: 5,
+    dueDate: 6,
     creditorContacts: { phone: '1800-665-3333', email: 'cards@bpi.com.ph', website: 'bpi.com.ph' },
   },
   {
@@ -261,55 +261,6 @@ function buildBurnDown(debts, strategy, totalMonthlyBudget, income, interestBoos
   return points
 }
 
-function buildAssistantReply(question, context) {
-  const lower = question.toLowerCase()
-  const {
-    topTarget,
-    safeExtraAllowed,
-    fixedPayments,
-    appliedExtra,
-    debtFreeMonth,
-    safeRuleBreached,
-    totalIncome,
-    remainingDisposable,
-  } = context
-
-  if (lower.includes('what should i pay') || lower.includes('pay next')) {
-    return topTarget
-      ? `Focus on ${topTarget.name} first. It has the strongest cashflow burden score for this month.`
-      : 'You are fully paid off. Keep emergency savings as your next focus.'
-  }
-
-  if (lower.includes('afford')) {
-    const amount = Number((lower.match(/\d+[\d,]*/)?.[0] || '0').replace(/,/g, ''))
-    const obligations = fixedPayments + amount
-    const safeLimit = totalIncome * 0.5
-    if (obligations <= safeLimit) {
-      return `Yes. ${formatCurrency(amount)} extra is within your safe range. You still keep at least 50% of salary.`
-    }
-    return `Not safely. ${formatCurrency(amount)} extra would break the 50% salary rule. Try up to ${formatCurrency(
-      safeExtraAllowed,
-    )} instead.`
-  }
-
-  if (lower.includes('debt free') || lower.includes('when will i finish')) {
-    return `At your current plan, you become debt free in about month ${debtFreeMonth}.`
-  }
-
-  if (lower.includes('safe') || lower.includes('50%')) {
-    if (safeRuleBreached) {
-      return `You are above the safe threshold. Keep fixed + extra to ${formatCurrency(
-        totalIncome * 0.5,
-      )} max. Current disposable left: ${formatCurrency(remainingDisposable)}.`
-    }
-    return `You are inside the 50% safety rule. Current disposable left: ${formatCurrency(remainingDisposable)}.`
-  }
-
-  return `Suggested focus: ${topTarget?.name || 'no active debt'}, extra payment cap ${formatCurrency(
-    safeExtraAllowed,
-  )}, currently applying ${formatCurrency(appliedExtra)}.`
-}
-
 function NumInput({ value, onChange }) {
   return (
     <input
@@ -323,12 +274,89 @@ function NumInput({ value, onChange }) {
 
 function MinPaymentPlanner({ debts, onUpdateDebt, onMarkPayment }) {
     const roundToNearest1000 = (n) => Math.ceil((Number(n) || 0) / 1000) * 1000
+  const dateLabel = new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric' })
 
     const calcProjectedMinDue = (debt) => {
       if (debt.fixedInstallment) return 0
       const balance = Number(debt.remainingBalance) || 0
       const rate = Number(debt.minDueRate) || 0.03
       return Math.max(0, balance * rate)
+    }
+
+    const getNextDueDate = (dueDate) => {
+      const dayOfMonth = Number(dueDate)
+      if (!Number.isFinite(dayOfMonth) || dayOfMonth < 1 || dayOfMonth > 31) {
+        return null
+      }
+
+      const now = new Date()
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const thisMonthMaxDay = new Date(todayStart.getFullYear(), todayStart.getMonth() + 1, 0).getDate()
+      const thisMonthDue = new Date(
+        todayStart.getFullYear(),
+        todayStart.getMonth(),
+        Math.min(dayOfMonth, thisMonthMaxDay),
+      )
+
+      if (thisMonthDue >= todayStart) {
+        return thisMonthDue
+      }
+
+      const nextMonthYear = todayStart.getMonth() === 11 ? todayStart.getFullYear() + 1 : todayStart.getFullYear()
+      const nextMonthIndex = (todayStart.getMonth() + 1) % 12
+      const nextMonthMaxDay = new Date(nextMonthYear, nextMonthIndex + 1, 0).getDate()
+      return new Date(nextMonthYear, nextMonthIndex, Math.min(dayOfMonth, nextMonthMaxDay))
+    }
+
+    const daysUntil = (targetDate) => {
+      if (!targetDate) return null
+      const now = new Date()
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const dayMs = 24 * 60 * 60 * 1000
+      return Math.max(0, Math.ceil((targetDate.getTime() - todayStart.getTime()) / dayMs))
+    }
+
+    const getDueMeta = (dueDate) => {
+      const nextDue = getNextDueDate(dueDate)
+      const daysLeft = daysUntil(nextDue)
+
+      if (!nextDue || daysLeft === null) {
+        return {
+          label: 'N/A',
+          subLabel: 'No due date',
+          badgeClass: 'border-slate-600 bg-slate-700/40 text-slate-300',
+        }
+      }
+
+      if (daysLeft === 0) {
+        return {
+          label: dateLabel.format(nextDue),
+          subLabel: 'Due today',
+          badgeClass: 'border-rose-400/70 bg-rose-500/20 text-rose-200',
+        }
+      }
+
+      if (daysLeft <= 3) {
+        return {
+          label: dateLabel.format(nextDue),
+          subLabel: `${daysLeft}d left`,
+          badgeClass: 'border-amber-400/70 bg-amber-500/20 text-amber-200',
+        }
+      }
+
+      if (daysLeft <= 7) {
+        return {
+          label: dateLabel.format(nextDue),
+          subLabel: `${daysLeft}d left`,
+          badgeClass: 'border-cyan-400/70 bg-cyan-500/20 text-cyan-200',
+        }
+      }
+
+      return {
+        label: dateLabel.format(nextDue),
+        subLabel: `${daysLeft}d left`,
+        badgeClass: 'border-emerald-400/60 bg-emerald-500/15 text-emerald-200',
+      }
     }
 
     const activeDebts = [...debts]
@@ -385,11 +413,19 @@ function MinPaymentPlanner({ debts, onUpdateDebt, onMarkPayment }) {
           </div>
         </div>
 
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
+          <span className="rounded-full border border-rose-400/70 bg-rose-500/20 px-2 py-1 text-rose-200">Due today</span>
+          <span className="rounded-full border border-amber-400/70 bg-amber-500/20 px-2 py-1 text-amber-200">1-3 days</span>
+          <span className="rounded-full border border-cyan-400/70 bg-cyan-500/20 px-2 py-1 text-cyan-200">4-7 days</span>
+          <span className="rounded-full border border-emerald-400/60 bg-emerald-500/15 px-2 py-1 text-emerald-200">8+ days</span>
+        </div>
+
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-sm">
-            <thead>
+          <table className="w-full min-w-[980px] text-sm">
+            <thead className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur">
               <tr className="border-b border-slate-700 text-xs uppercase tracking-[0.12em] text-slate-400">
                 <th className="pb-2 text-left">Debt / Bank</th>
+                <th className="pb-2 text-right">Due Date</th>
                 <th className="pb-2 text-right">Balance</th>
                 <th className="pb-2 text-right">Min Due</th>
                 <th className="pb-2 text-right">Finance Charge</th>
@@ -403,8 +439,10 @@ function MinPaymentPlanner({ debts, onUpdateDebt, onMarkPayment }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ debt, minDue, fc, combined, rounded, projMin, projRounded }) => (
-                <tr key={debt.id} className="border-b border-slate-800/80">
+              {rows.map(({ debt, minDue, fc, combined, rounded, projMin, projRounded }, index) => {
+                const dueMeta = getDueMeta(debt.dueDate)
+                return (
+                <tr key={debt.id} className={`border-b border-slate-800/80 transition ${index % 2 === 0 ? 'bg-slate-900/15' : 'bg-transparent'} hover:bg-slate-700/20`}>
                   <td className="py-2.5 pr-3">
                     <p className="font-semibold text-slate-100">{debt.name}</p>
                     <p className="text-xs text-slate-400">{debt.bank}</p>
@@ -413,6 +451,12 @@ function MinPaymentPlanner({ debts, onUpdateDebt, onMarkPayment }) {
                         fixed · no extra
                       </span>
                     )}
+                  </td>
+                  <td className="py-2.5 pr-3 text-right">
+                    <span className={`inline-flex min-w-[78px] flex-col items-end rounded-lg border px-2 py-1 ${dueMeta.badgeClass}`}>
+                      <span className="mono text-sm font-semibold leading-tight">{dueMeta.label}</span>
+                      <span className="text-[10px] leading-tight opacity-90">{dueMeta.subLabel}</span>
+                    </span>
                   </td>
                   <td className="py-2.5 pr-3 mono text-slate-200">{formatCurrency(debt.remainingBalance)}</td>
                   <td className="py-2 pr-2 w-32">
@@ -495,11 +539,11 @@ function MinPaymentPlanner({ debts, onUpdateDebt, onMarkPayment }) {
                     </button>
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
             <tfoot>
               <tr className="border-t-2 border-slate-600">
-                <td className="pt-3 font-semibold text-slate-200" colSpan={2}>
+                <td className="pt-3 font-semibold text-slate-200" colSpan={3}>
                   TOTAL
                 </td>
                 <td className="pt-3 pr-3 text-right mono font-semibold text-slate-100">{formatCurrency(totals.minDue)}</td>
@@ -711,32 +755,88 @@ function StatusBadge({ status }) {
 // Feature component: Payment Reminders Calendar
 function PaymentRemindersCalendar({ debts }) {
   const now = new Date()
-  const currentDay = now.getDate()
-  const daysUntil = (dueDate) => {
-    const days = dueDate - currentDay
-    return days < 0 ? days + 30 : days === 0 ? 0 : days
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const dayMs = 24 * 60 * 60 * 1000
+  const dateLabel = new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric' })
+
+  const getNextDueDate = (dueDate) => {
+    const dayOfMonth = Number(dueDate)
+    if (!Number.isFinite(dayOfMonth) || dayOfMonth < 1 || dayOfMonth > 31) {
+      return null
+    }
+
+    const thisMonthMaxDay = new Date(todayStart.getFullYear(), todayStart.getMonth() + 1, 0).getDate()
+    const thisMonthDue = new Date(
+      todayStart.getFullYear(),
+      todayStart.getMonth(),
+      Math.min(dayOfMonth, thisMonthMaxDay),
+    )
+
+    if (thisMonthDue >= todayStart) {
+      return thisMonthDue
+    }
+
+    const nextMonthYear = todayStart.getMonth() === 11 ? todayStart.getFullYear() + 1 : todayStart.getFullYear()
+    const nextMonthIndex = (todayStart.getMonth() + 1) % 12
+    const nextMonthMaxDay = new Date(nextMonthYear, nextMonthIndex + 1, 0).getDate()
+    return new Date(nextMonthYear, nextMonthIndex, Math.min(dayOfMonth, nextMonthMaxDay))
   }
-  const getDueStatus = (daysIf) => {
-    if (daysIf < 0 || daysIf > 30) return 'overdue'
-    if (daysIf === 0) return 'today'
-    if (daysIf <= 7) return 'soon'
-    if (daysIf <= 15) return 'week'
+
+  const daysUntil = (targetDate) => {
+    if (!targetDate) return null
+    return Math.max(0, Math.ceil((targetDate.getTime() - todayStart.getTime()) / dayMs))
+  }
+
+  const getDueStatus = (daysLeft) => {
+    if (daysLeft === null) return 'unknown'
+    if (daysLeft === 0) return 'today'
+    if (daysLeft <= 3) return 'soon'
+    if (daysLeft <= 10) return 'week'
     return 'month'
   }
+
+  const getDaysLabel = (daysLeft) => {
+    if (daysLeft === null) return 'Date unavailable'
+    if (daysLeft === 0) return 'Due today'
+    if (daysLeft === 1) return '1 day left'
+    return `${daysLeft} days left`
+  }
+
   const sorted = [...debts].sort((a, b) => (a.dueDate || 30) - (b.dueDate || 30))
   return (
     <div className="rounded-2xl border border-slate-700/60 bg-slate-800/70 p-4 shadow-xl shadow-slate-950/30">
       <h2 className="text-lg font-semibold text-slate-100">Payment Due Dates</h2>
+      <p className="mt-1 text-xs text-slate-400">Left side is your monthly due day. Right side is countdown from today.</p>
       <div className="mt-3 grid gap-2">
         {sorted.map((debt) => {
-          const days = daysUntil(debt.dueDate || 30)
+          const nextDue = getNextDueDate(debt.dueDate)
+          const days = daysUntil(nextDue)
           const status = getDueStatus(days)
-          const statusColor = { today: 'text-rose-200 border-rose-400', soon: 'text-amber-200 border-amber-400', week: 'text-cyan-200 border-cyan-400', month: 'text-emerald-200 border-emerald-400', overdue: 'text-rose-300 border-rose-500' }[status]
-          const icon = { today: '🔴', soon: '🟠', week: '🔵', month: '🟢', overdue: '⚠️' }[status]
+          const statusColor = {
+            today: 'text-rose-200 border-rose-400',
+            soon: 'text-amber-200 border-amber-400',
+            week: 'text-cyan-200 border-cyan-400',
+            month: 'text-emerald-200 border-emerald-400',
+            unknown: 'text-slate-300 border-slate-500',
+          }[status]
+          const icon = {
+            today: '🔴',
+            soon: '🟠',
+            week: '🔵',
+            month: '🟢',
+            unknown: '⚪',
+          }[status]
           return (
             <div key={debt.id} className={`rounded-lg border flex items-center justify-between p-2 text-xs ${statusColor}`}>
-              <span>{icon} {debt.name} due {debt.dueDate ? `day ${debt.dueDate}` : 'N/A'}</span>
-              <span className="font-semibold">{days === 0 ? 'TODAY' : `${Math.abs(days)}d`}</span>
+              <div>
+                <p>
+                  {icon} {debt.name} {debt.dueDate ? `due every month on day ${debt.dueDate}` : 'due date not set'}
+                </p>
+                <p className="mt-0.5 text-[11px] text-slate-300/90">
+                  {nextDue ? `Next due: ${dateLabel.format(nextDue)}` : 'Next due: N/A'}
+                </p>
+              </div>
+              <span className="font-semibold">{getDaysLabel(days)}</span>
             </div>
           )
         })}
@@ -939,14 +1039,6 @@ function DebtConsolidationModal({ debts, onClose }) {
 function App() {
   const [debts, setDebts] = useState(seedDebts)
   const [settings, setSettings] = useState(seedSettings)
-  const [chatInput, setChatInput] = useState('')
-  const [chatHistory, setChatHistory] = useState([
-    {
-      role: 'assistant',
-      content:
-        'MCP Assistant online. Ask what to pay next, affordability checks, or debt-free timeline.',
-    },
-  ])
 
   const [paymentDraft, setPaymentDraft] = useState({
     debtId: null,
@@ -1017,9 +1109,6 @@ function App() {
     if (parsed.settings) {
       setSettings((prev) => ({ ...prev, ...parsed.settings }))
     }
-    if (parsed.chatHistory && parsed.chatHistory.length > 0) {
-      setChatHistory(parsed.chatHistory)
-    }
 
     if (storedVersion < SEED_VERSION) {
       const merged = seedDebts.map((seed) => {
@@ -1033,7 +1122,7 @@ function App() {
           financeCharge: saved.financeCharge ?? seed.financeCharge,
           minDueRate: saved.minDueRate ?? seed.minDueRate,
           paymentHistory: saved.paymentHistory ?? [],
-          dueDate: saved.dueDate ?? seed.dueDate,
+          dueDate: seed.dueDate,
           creditorContacts: saved.creditorContacts ?? seed.creditorContacts,
         }
       })
@@ -1048,19 +1137,17 @@ function App() {
   useEffect(() => {
     async function loadData() {
       const online = await checkConnection()
-      setDbStatus(online ? 'online' : 'offline')
+      setDbStatus(online ? online : 'offline')
 
       if (online) {
-        const [remoteDebts, remoteSettings, remoteChatHistory] = await Promise.all([
-          dbLoad('debts'),
-          dbLoad('settings'),
-          dbLoad('chatHistory'),
+        const [remoteDebts, remoteSettings] = await Promise.all([
+          dbLoad('debts', online),
+          dbLoad('settings', online),
         ])
-        if (remoteDebts || remoteSettings || remoteChatHistory) {
+        if (remoteDebts || remoteSettings) {
           applyParsed({
             debts: remoteDebts,
             settings: remoteSettings,
-            chatHistory: remoteChatHistory,
             seedVersion: SEED_VERSION - 1,  // Force merge with seed data to get new fields
           })
           return
@@ -1094,7 +1181,6 @@ function App() {
         seedVersion: SEED_VERSION,
         debts,
         settings,
-        chatHistory,
       }),
     )
 
@@ -1102,16 +1188,15 @@ function App() {
       clearTimeout(saveTimer.current)
     }
     saveTimer.current = setTimeout(async () => {
-      if (dbStatus !== 'online') {
+      if (dbStatus === 'offline') {
         return
       }
       await Promise.all([
-        dbSave('debts', debts),
-        dbSave('settings', settings),
-        dbSave('chatHistory', chatHistory),
+        dbSave('debts', debts, dbStatus),
+        dbSave('settings', settings, dbStatus),
       ])
     }, 600)
-  }, [debts, settings, chatHistory, dbStatus])
+  }, [debts, settings, dbStatus])
 
   const totalIncome = Number(settings.biMonthlySalary || 0) * 2
   const fixedPayments = debts
@@ -1197,6 +1282,86 @@ function App() {
     setDebts((prev) => prev.filter((d) => d.id !== id))
   }
 
+  // ── Notifications ────────────────────────────────────────────────────────
+  const [notifPermission, setNotifPermission] = useState(
+    typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',
+  )
+
+  const requestNotifications = async () => {
+    if (typeof Notification === 'undefined') return
+    const result = await Notification.requestPermission()
+    setNotifPermission(result)
+    if (result === 'granted') fireUpcomingNotifications()
+  }
+
+  const getNextDueDateNotif = (dueDate) => {
+    const dayOfMonth = Number(dueDate)
+    if (!Number.isFinite(dayOfMonth) || dayOfMonth < 1 || dayOfMonth > 31) return null
+    const now = new Date()
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const thisMonthMaxDay = new Date(todayStart.getFullYear(), todayStart.getMonth() + 1, 0).getDate()
+    const thisMonthDue = new Date(todayStart.getFullYear(), todayStart.getMonth(), Math.min(dayOfMonth, thisMonthMaxDay))
+    if (thisMonthDue >= todayStart) return thisMonthDue
+    const nextYear = todayStart.getMonth() === 11 ? todayStart.getFullYear() + 1 : todayStart.getFullYear()
+    const nextMonth = (todayStart.getMonth() + 1) % 12
+    const nextMaxDay = new Date(nextYear, nextMonth + 1, 0).getDate()
+    return new Date(nextYear, nextMonth, Math.min(dayOfMonth, nextMaxDay))
+  }
+
+  const fireUpcomingNotifications = () => {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+    const now = new Date()
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const dayMs = 24 * 60 * 60 * 1000
+    const dateLabel = new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric' })
+
+    debts
+      .filter((d) => d.remainingBalance > 0 && d.dueDate)
+      .forEach((d) => {
+        const nextDue = getNextDueDateNotif(d.dueDate)
+        if (!nextDue) return
+        const daysLeft = Math.max(0, Math.ceil((nextDue.getTime() - todayStart.getTime()) / dayMs))
+        if (daysLeft > 3) return
+        const label = daysLeft === 0 ? 'is due TODAY' : `is due in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`
+        new Notification(`💳 ${d.name} ${label}`, {
+          body: `Payment due: ${dateLabel.format(nextDue)} · Balance: ₱${Math.round(d.remainingBalance).toLocaleString()}`,
+          icon: '/favicon.ico',
+          tag: `debt-due-${d.id}`,
+        })
+      })
+  }
+
+  // Fire notifications on load when already granted
+  useEffect(() => {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      fireUpcomingNotifications()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Compute in-app alert banners for debts due within 5 days
+  const upcomingAlerts = useMemo(() => {
+    const now = new Date()
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const dayMs = 24 * 60 * 60 * 1000
+    const dateLabel = new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric' })
+    return debts
+      .filter((d) => d.remainingBalance > 0 && d.dueDate)
+      .map((d) => {
+        const nextDue = getNextDueDateNotif(d.dueDate)
+        if (!nextDue) return null
+        const daysLeft = Math.max(0, Math.ceil((nextDue.getTime() - todayStart.getTime()) / dayMs))
+        if (daysLeft > 5) return null
+        return { id: d.id, name: d.name, daysLeft, dateStr: dateLabel.format(nextDue) }
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.daysLeft - b.daysLeft)
+  }, [debts])
+
+  const [dismissedAlerts, setDismissedAlerts] = useState(new Set())
+  const visibleAlerts = upcomingAlerts.filter((a) => !dismissedAlerts.has(a.id))
+  // ── End Notifications ─────────────────────────────────────────────────────
+
   const submitPayment = () => {
     if (!paymentDraft.debtId) {
       return
@@ -1239,43 +1404,6 @@ function App() {
     })
   }
 
-  const sendChat = async () => {
-    if (!chatInput.trim()) {
-      return
-    }
-    const question = chatInput.trim()
-
-    setChatHistory((prev) => [...prev, { role: 'user', content: question }])
-    setChatInput('')
-
-    const context = {
-      topTarget,
-      safeExtraAllowed,
-      fixedPayments,
-      appliedExtra,
-      debtFreeMonth,
-      safeRuleBreached,
-      totalIncome,
-      remainingDisposable,
-    }
-
-    let reply = buildAssistantReply(question, context)
-
-    // Optional hook: attach window.debtTrackerLLM = async ({ question, context }) => string
-    if (typeof window !== 'undefined' && typeof window.debtTrackerLLM === 'function') {
-      try {
-        const external = await window.debtTrackerLLM({ question, context, debts })
-        if (typeof external === 'string' && external.trim()) {
-          reply = external.trim()
-        }
-      } catch (error) {
-        console.error('External MCP hook failed', error)
-      }
-    }
-
-    setChatHistory((prev) => [...prev, { role: 'assistant', content: reply }])
-  }
-
   return (
     <div className="mx-auto min-h-screen max-w-7xl p-4 md:p-6">
       <header className="mb-5 flex flex-col gap-3 rounded-2xl border border-slate-700/60 bg-slate-900/70 p-4 shadow-xl shadow-slate-950/40 backdrop-blur md:flex-row md:items-center md:justify-between">
@@ -1288,7 +1416,8 @@ function App() {
         <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-xs text-slate-300">
             {dbStatus === 'checking' && '⏳ connecting...'}
-            {dbStatus === 'online' && '● PocketBase'}
+            {dbStatus === 'pocketbase' && '🟢 PocketBase'}
+            {dbStatus === 'supabase' && '🟦 Supabase'}
             {dbStatus === 'offline' && '⚠ localStorage only'}
           </span>
           <button
@@ -1319,8 +1448,57 @@ function App() {
             />
             Interest boost
           </label>
+          {notifPermission !== 'unsupported' && (
+            notifPermission === 'granted' ? (
+              <button
+                onClick={fireUpcomingNotifications}
+                className="rounded-lg border border-emerald-500/60 bg-emerald-500/15 px-3 py-2 text-xs font-medium text-emerald-200 hover:bg-emerald-500/25"
+              >
+                🔔 Check Reminders
+              </button>
+            ) : (
+              <button
+                onClick={requestNotifications}
+                className="rounded-lg border border-amber-500/60 bg-amber-500/15 px-3 py-2 text-xs font-medium text-amber-200 hover:bg-amber-500/25"
+              >
+                🔕 Enable Notifications
+              </button>
+            )
+          )}
         </div>
       </header>
+
+      {visibleAlerts.length > 0 && (
+        <div className="mb-4 space-y-2">
+          {visibleAlerts.map((alert) => (
+            <div
+              key={alert.id}
+              className={`flex items-center justify-between rounded-xl border px-4 py-2.5 text-sm ${
+                alert.daysLeft === 0
+                  ? 'border-rose-400/60 bg-rose-500/15 text-rose-200'
+                  : alert.daysLeft <= 2
+                  ? 'border-amber-400/60 bg-amber-500/15 text-amber-200'
+                  : 'border-cyan-400/50 bg-cyan-500/10 text-cyan-200'
+              }`}
+            >
+              <span>
+                {alert.daysLeft === 0 ? '🔴' : alert.daysLeft <= 2 ? '🟠' : '🔵'}
+                {' '}
+                <strong>{alert.name}</strong>{' '}
+                {alert.daysLeft === 0
+                  ? 'is due TODAY'
+                  : `is due on ${alert.dateStr} — ${alert.daysLeft} day${alert.daysLeft === 1 ? '' : 's'} left`}
+              </span>
+              <button
+                onClick={() => setDismissedAlerts((prev) => new Set([...prev, alert.id]))}
+                className="ml-4 rounded px-2 py-0.5 text-xs opacity-70 hover:opacity-100"
+              >
+                ✕ Dismiss
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       <section className="mb-5 grid gap-3 md:grid-cols-5">
         <StatCard
@@ -1512,7 +1690,10 @@ function App() {
           </div>
 
           <div className="rounded-2xl border border-slate-700/60 bg-slate-800/70 p-4 shadow-xl shadow-slate-950/30">
-            <h2 className="text-xl font-semibold text-slate-100">MCP Assistant</h2>
+            <h2 className="text-xl font-semibold text-slate-100">Action Checklist</h2>
+            <p className="mt-1 text-xs text-slate-400">
+              Quick plan based on your current balances, cashflow, and safety rule.
+            </p>
 
             <ul className="mt-3 space-y-2 text-sm text-slate-200">
               {recommendations.map((item) => (
@@ -1521,42 +1702,6 @@ function App() {
                 </li>
               ))}
             </ul>
-
-            <div className="mt-3 max-h-48 space-y-2 overflow-y-auto rounded-lg border border-slate-700 bg-slate-900/80 p-2 text-sm">
-              {chatHistory.map((entry, idx) => (
-                <div
-                  key={`${entry.role}-${idx}`}
-                  className={`rounded-lg p-2 ${
-                    entry.role === 'assistant'
-                      ? 'border border-cyan-700/40 bg-cyan-500/10 text-cyan-100'
-                      : 'border border-slate-600 bg-slate-700/50 text-slate-100'
-                  }`}
-                >
-                  <p className="text-[11px] uppercase tracking-[0.15em] opacity-70">{entry.role}</p>
-                  <p>{entry.content}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-2 flex gap-2">
-              <input
-                value={chatInput}
-                onChange={(event) => setChatInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    sendChat()
-                  }
-                }}
-                placeholder="What should I pay next?"
-                className="flex-1 rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100"
-              />
-              <button
-                onClick={sendChat}
-                className="rounded-lg border border-cyan-400/60 bg-cyan-500/20 px-3 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-500/30"
-              >
-                Ask
-              </button>
-            </div>
           </div>
         </aside>
       </section>
