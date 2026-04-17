@@ -27,11 +27,8 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install Supabase CLI
-        run: npm i -g supabase
-
       - name: Verify Supabase CLI
-        run: supabase --version
+        run: npx supabase@latest --version
 
       - name: Validate required secrets
         run: |
@@ -40,7 +37,7 @@ jobs:
       - name: Push function secrets
         if: ${{ env.EMAILJS_SERVICE_ID != '' && env.EMAILJS_TEMPLATE_ID != '' && env.EMAILJS_PUBLIC_KEY != '' }}
         run: |
-          supabase secrets set \
+          npx supabase@latest secrets set \
             EMAILJS_SERVICE_ID="$EMAILJS_SERVICE_ID" \
             EMAILJS_TEMPLATE_ID="$EMAILJS_TEMPLATE_ID" \
             EMAILJS_PUBLIC_KEY="$EMAILJS_PUBLIC_KEY" \
@@ -51,4 +48,4 @@ jobs:
         run: echo "EmailJS secrets not present in GitHub Secrets; skipping secret sync and using existing Supabase secrets."
 
       - name: Deploy email-reminders function
-        run: supabase functions deploy email-reminders --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
+        run: npx supabase@latest functions deploy email-reminders --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
