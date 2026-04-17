@@ -14,7 +14,7 @@ select cron.schedule(
   $$
   select net.http_post(
     url    := 'https://comdmxcwjxlwnbhhypbq.supabase.co/functions/v1/email-reminders',
-    headers := '{"Content-Type":"application/json","Authorization":"Bearer sb_publishable_7aaULoi_q32bPkQw5HnJ4g_4F8Gm-mN"}'::jsonb,
+    headers := '{"Content-Type":"application/json"}'::jsonb,
     body   := '{}'::jsonb
   );
   $$

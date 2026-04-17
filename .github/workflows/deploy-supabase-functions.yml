@@ -36,4 +36,4 @@ jobs:
             --project-ref "$SUPABASE_PROJECT_ID"
 
       - name: Deploy email-reminders function
-        run: supabase functions deploy email-reminders --project-ref "$SUPABASE_PROJECT_ID"
+        run: supabase functions deploy email-reminders --project-ref "$SUPABASE_PROJECT_ID" --no-verify-jwt
